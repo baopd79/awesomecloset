@@ -1,0 +1,800 @@
+# Implementation Plan: AwesomeCloset
+
+## Overview
+
+Build một AI personal closet app mobile-first cho người dùng Việt Nam. Core loop: chụp ảnh đồ → AI remove-bg + tag → digital closet → AI suggest outfit theo thời tiết + hoàn cảnh mỗi sáng. Stack: React Native (Expo) + FastAPI + Supabase + Gemini Flash + ARQ/Redis.
+
+## Git Workflow
+
+**Branch naming** — type prefix (Conventional Commits) + task number:
+```
+chore/  — setup, config, infra (không ảnh hưởng logic)
+feat/   — tính năng mới
+fix/    — bug fix
+refactor/ — refactor không thêm feature
+```
+
+Map với PLAN.md:
+```
+chore/0-git-ci-setup
+chore/1-db-migrations
+chore/2-backend-core
+chore/3-arq-worker
+feat/4-items-upload
+feat/5-rembg-pipeline
+feat/6-mobile-auth
+feat/7-mobile-upload
+feat/8-gemini-tagging
+feat/9-closet-api
+feat/10-closet-ui
+feat/11-outfits
+feat/12-wear-logging
+feat/13-weather
+feat/14-suggest
+feat/15-suggest-ui
+feat/16-analytics
+feat/17-gamification
+feat/18-push-notifications
+chore/19-deployment-cd
+chore/20-quality-sweep
+chore/21-eas-build
+```
+
+**Luồng mỗi task:**
+```
+Bạn: "Bắt đầu Task N"
+  → Tôi: tạo branch, viết code, chạy test, báo cáo kết quả
+  → Bạn: review diff trong IDE, feedback nếu cần
+  → Bạn: git push + merge PR (tôi không tự push trừ khi được yêu cầu)
+  → CI pass → merge → CD deploy (từ Phase 4)
+```
+
+**Quy tắc:**
+- Không push thẳng lên `main` — chỉ merge qua PR
+- PR không merge được nếu CI fail
+- 1 task = 1 branch = 1 PR
+
+---
+
+## Dependency Graph
+
+```
+Git repo + CI (GitHub Actions)
+    └── DB Schema + Enums + RLS
+            └── core/ (database, exceptions, config, DI, logging)
+                    └── ARQ + Redis worker skeleton
+                            ├── items feature (upload → rembg → tagging)
+                            │       └── Digital Closet UI
+                            │               └── outfits feature (outfit_items, collage, wear log)
+                            │                       └── suggest feature (weather + Gemini + cache)
+                            │                               └── gamification UI + analytics
+                            └── Mobile auth + navigation
+```
+
+---
+
+## Task 0: Git Setup + CI Pipeline
+
+**Description:** Khởi tạo git repo, branch protection, `.gitignore`, và GitHub Actions CI pipeline. CI chạy backend tests + mobile type check trên mỗi PR — chỉ chạy job liên quan đến code thay đổi. Setup một lần trước tất cả tasks, không phụ thuộc vào tech stack cụ thể.
+
+**Acceptance criteria:**
+- [ ] Git repo khởi tạo, `main` branch protected — không push trực tiếp, chỉ merge qua PR
+- [ ] `.gitignore` cover: Python (`__pycache__/`, `.env`, `.venv/`, `*.pyc`), Expo (`node_modules/`, `.expo/`, `ios/`, `android/`, `.env.local`), general (`.DS_Store`, `*.log`)
+- [ ] `.env.example` commit với tất cả required env vars (không có giá trị thật)
+- [ ] `pyproject.toml` với `[project]` dependencies + `[project.optional-dependencies] dev` — quản lý bằng `uv`
+- [ ] GitHub Actions — job `ci-backend`: chạy khi `backend/**` hoặc `tests/**` thay đổi
+  - `uv run ruff check backend/` — lint
+  - `uv run pytest tests/ --tb=short` — toàn bộ tests
+- [ ] GitHub Actions — job `ci-mobile`: chạy khi `mobile/**` thay đổi
+  - `npx tsc --noEmit` — TypeScript strict check
+  - `npx eslint mobile/` — lint
+- [ ] PR không merge được nếu CI fail (branch protection rule)
+
+**Verification:**
+- [ ] Push branch với `print("debug")` trong Python → ruff fail → PR blocked
+- [ ] Push branch với `const x: any = 1` trong TypeScript → tsc fail → PR blocked
+- [ ] Push branch với test fail → pytest fail → PR blocked
+- [ ] Sửa chỉ `mobile/` → `ci-backend` không chạy (path filter hoạt động)
+
+**Dependencies:** None
+
+**Files likely touched:**
+- `.gitignore`
+- `.env.example`
+- `.github/workflows/ci.yml`
+
+**Estimated scope:** S
+
+---
+
+## Phase 1 — Foundation
+
+---
+
+### Task 1: DB Migrations, Enums, RLS
+
+**Description:** Tạo toàn bộ DB schema trên Supabase: taxonomy enums, tất cả tables, indexes, RLS policies, storage bucket config. Đây là foundation — mọi task khác phụ thuộc vào đây.
+
+**Acceptance criteria:**
+- [ ] 7 taxonomy enums tồn tại: `clothing_type`, `clothing_style`, `clothing_season`, `clothing_occasion`, `processing_status`, `feedback_action`, `outfit_item_role`
+- [ ] 8 tables tồn tại với đúng columns + FK + constraints theo spec Section 4
+- [ ] `users.id` references `auth.users(id) ON DELETE CASCADE`
+- [ ] `outfit_items` có `PRIMARY KEY(outfit_id, item_id)`, `ON DELETE RESTRICT` trên `item_id`
+- [ ] `daily_suggestion_cache` có `UNIQUE(user_id, suggestion_date, context_hash)`
+- [ ] Index tối thiểu được tạo: `clothing_items(user_id, is_archived, deleted_at)`, `clothing_items(user_id, type)`, `outfit_items(item_id)`, `outfits(user_id, created_at)`, `wear_logs(user_id, worn_date)`
+- [ ] RLS enabled trên tất cả tables — user chỉ SELECT/INSERT/UPDATE/DELETE rows của mình
+- [ ] Storage bucket `closet-images` tạo với private access
+
+**Verification:**
+- [ ] `supabase db push` không có lỗi
+- [ ] Query `SELECT * FROM clothing_items` với user không đúng trả 0 rows (RLS hoạt động)
+- [ ] Thử insert `clothing_items` với `type = 'invalid'` → constraint error
+
+**Dependencies:** None
+
+**Files likely touched:**
+- `supabase/migrations/001_enums.sql`
+- `supabase/migrations/002_tables.sql`
+- `supabase/migrations/003_indexes.sql`
+- `supabase/migrations/004_rls.sql`
+- `supabase/migrations/005_storage.sql`
+
+**Estimated scope:** M
+
+---
+
+### Task 2: Backend Core Setup
+
+**Description:** Khởi tạo FastAPI project với toàn bộ `core/` layer: database session, `transaction()` helper, `AppException` hierarchy, DI factory, config via pydantic-settings, loguru structured logging. Đây là shared foundation cho tất cả features.
+
+**Acceptance criteria:**
+- [ ] `get_db()` yield `AsyncSession` không begin transaction
+- [ ] `transaction(session)` async context manager: commit on success, rollback on exception
+- [ ] `AppException(code, status, **extra)` raise được từ service, router translate sang HTTP response đúng format
+- [ ] `Settings` load từ `.env` qua pydantic-settings — app fail fast nếu thiếu required env var
+- [ ] loguru log mỗi request với `request_id`, `user_id`, method, path, status code, duration
+- [ ] `GET /health` trả `{"status": "ok"}`
+
+**Verification:**
+- [ ] `pytest tests/test_core.py` pass
+- [ ] Raise `AppException(code="TEST", status=404)` trong router → response `{"code": "TEST"}` với status 404
+- [ ] `uv run uvicorn backend.main:app` khởi động không lỗi
+
+**Dependencies:** Task 1 (DB connection string từ Supabase)
+
+**Files likely touched:**
+- `backend/main.py`
+- `backend/core/database.py`
+- `backend/core/exceptions.py`
+- `backend/core/dependencies.py`
+- `backend/core/config.py`
+- `backend/core/logging.py`
+- `tests/test_core.py`
+
+**Estimated scope:** M
+
+---
+
+### Task 3: ARQ Worker + Redis Setup
+
+**Description:** Setup ARQ background job worker chạy process riêng cùng codebase với API. Worker nhận jobs từ Redis queue, xử lý rembg + Gemini tagging. Task này chỉ setup skeleton — logic rembg/Gemini sẽ ở Task 5 và Task 8.
+
+**Acceptance criteria:**
+- [ ] `arq backend.workers.main.WorkerSettings` khởi động không lỗi
+- [ ] Job `process_item` enqueue được từ API, worker nhận và log job id
+- [ ] Job failed → retry 3 lần với exponential backoff
+- [ ] Worker cùng đọc `Settings` từ `core/config.py`
+- [ ] Redis connection string config qua env var `REDIS_URL`
+
+**Verification:**
+- [ ] Chạy `arq backend.workers.main.WorkerSettings` + enqueue 1 job test → log xuất hiện ở worker
+- [ ] Kill worker giữa chừng → job requeue khi worker restart
+
+**Dependencies:** Task 2
+
+**Files likely touched:**
+- `backend/workers/main.py`
+- `backend/workers/tasks.py`
+- `backend/core/config.py` (thêm REDIS_URL)
+
+**Estimated scope:** S
+
+---
+
+### Task 4: Items Feature — Upload + Processing Lifecycle
+
+**Description:** API nhận ảnh upload, lưu vào Supabase Storage, tạo `clothing_items` record với `processing_status = pending`, enqueue ARQ job. Frontend poll hoặc dùng Supabase Realtime để track status. Bao gồm đầy đủ CRUD + retry endpoint.
+
+**Acceptance criteria:**
+- [ ] `POST /api/items/upload` nhận multipart file, resize/compress trước khi lưu, trả `202 Accepted` với `item_id`
+- [ ] `clothing_items` record tạo với `processing_status = pending`
+- [ ] `GET /api/items` trả list items của user hiện tại (exclude `deleted_at IS NOT NULL`), support filter `type`, `occasion`, `season`, `is_archived`
+- [ ] `GET /api/items/{id}` trả item detail + `processing_status` + `processing_error`
+- [ ] `PATCH /api/items/{id}/tags` update `type`, `style`, `season`, `occasion`, `custom_tags` + set `updated_at`
+- [ ] `DELETE /api/items/{id}` set `deleted_at = now()` (soft delete)
+- [ ] `POST /api/items/{id}/retry` re-enqueue job nếu `processing_status = failed`
+- [ ] RLS: user chỉ thấy items của mình
+
+**Verification:**
+- [ ] `pytest tests/items/test_service.py` pass (unit: mock repo)
+- [ ] `pytest tests/items/test_integration.py` pass (integration: real Postgres)
+- [ ] Upload file > 10MB → 400 error
+- [ ] GET items của user khác → 0 results
+
+**Dependencies:** Task 2, Task 3
+
+**Files likely touched:**
+- `backend/items/router.py`
+- `backend/items/service.py`
+- `backend/items/repository.py`
+- `backend/items/models.py`
+- `backend/items/schemas.py`
+- `tests/items/test_service.py`
+- `tests/items/test_integration.py`
+- `tests/conftest.py`
+
+**Estimated scope:** L — nếu cần, tách Upload+CRUD thành 2 task riêng
+
+---
+
+### Task 5: rembg Pipeline trên ARQ Worker
+
+**Description:** ARQ worker nhận job `process_item`, chạy rembg `u2net` để remove background, lưu PNG transparent vào Storage, update `processing_status`. Fallback sang Remove.bg API nếu rembg fail. Mọi bước update `processing_status` để frontend track được.
+
+**Acceptance criteria:**
+- [ ] Worker nhận `item_id`, fetch original image từ Storage
+- [ ] rembg xử lý → PNG transparent, lưu vào `processed_url`
+- [ ] Tạo thumbnail 300px → lưu `thumbnail_url`
+- [ ] `processing_status` update: `pending → removing_bg → tagging` (tagging là bước tiếp, Task 8)
+- [ ] Nếu rembg fail → thử Remove.bg API (`REMOVEBG_API_KEY` từ env)
+- [ ] Nếu cả hai fail → `processing_status = failed`, lưu `processing_error`
+- [ ] `BackgroundRemovalClient` có interface để mock trong test
+
+**Verification:**
+- [ ] Upload ảnh áo trên nền trắng → `processed_url` là PNG transparent
+- [ ] Upload ảnh background phức tạp → rembg fail → Remove.bg fallback hoạt động (nếu có key)
+- [ ] `pytest tests/items/test_bg_removal.py` pass với mock client
+
+**Dependencies:** Task 3, Task 4
+
+**Files likely touched:**
+- `backend/workers/bg_removal.py`
+- `backend/workers/tasks.py`
+- `tests/items/test_bg_removal.py`
+
+**Estimated scope:** M
+
+---
+
+### Task 6: Mobile — Auth + Navigation
+
+**Description:** Khởi tạo Expo project với Expo Router, setup Supabase Auth (email/password), màn hình login/register, tab navigation skeleton. Đây là shell của app mobile.
+
+**Acceptance criteria:**
+- [ ] `expo start` chạy không lỗi trên iOS simulator và Android emulator
+- [ ] Register với email/password → tạo user trong Supabase Auth
+- [ ] Login → navigate vào tab navigation
+- [ ] Logout → về màn hình login
+- [ ] Tab navigation: Home, Closet, Add, Analytics
+- [ ] TypeScript strict mode, không có `any` type
+
+**Verification:**
+- [ ] Tạo account mới, login, logout thành công trên thiết bị thật
+- [ ] `npx tsc --noEmit` không lỗi
+
+**Dependencies:** Task 1 (Supabase project URL + anon key)
+
+**Files likely touched:**
+- `mobile/app/(auth)/login.tsx`
+- `mobile/app/(auth)/register.tsx`
+- `mobile/app/(tabs)/index.tsx`
+- `mobile/app/(tabs)/closet.tsx`
+- `mobile/app/(tabs)/add.tsx`
+- `mobile/app/(tabs)/analytics.tsx`
+- `mobile/lib/supabase.ts`
+- `mobile/lib/api.ts`
+
+**Estimated scope:** M
+
+---
+
+### Task 7: Mobile — Upload Flow
+
+**Description:** Màn hình Add cho phép chụp ảnh qua camera in-app hoặc batch pick từ gallery. Ảnh được upload lên API, hiển thị progress indicator per item, và retry UI nếu fail. Subscribe Supabase Realtime để update processing status real-time.
+
+**Acceptance criteria:**
+- [ ] Camera permission chỉ xin khi user bấm chụp lần đầu
+- [ ] Gallery permission chỉ xin khi user bấm chọn từ gallery
+- [ ] Batch select tối đa 10 ảnh cùng lúc
+- [ ] Mỗi ảnh hiển thị progress: uploading → removing_bg → tagging → ready / failed
+- [ ] Status update real-time qua Supabase Realtime subscription
+- [ ] Nút retry per item khi `processing_status = failed`
+
+**Verification:**
+- [ ] Upload 3 ảnh → tất cả chuyển `ready` sau khi worker xử lý
+- [ ] Tắt mạng giữa upload → error state hiển thị, retry hoạt động
+- [ ] Test trên iOS và Android thật
+
+**Dependencies:** Task 4, Task 5, Task 6
+
+**Files likely touched:**
+- `mobile/app/(tabs)/add.tsx`
+- `mobile/components/UploadQueue.tsx`
+- `mobile/components/ItemProcessingCard.tsx`
+- `mobile/hooks/useRealtimeItem.ts`
+- `mobile/lib/api.ts`
+
+**Estimated scope:** M
+
+---
+
+## ✅ Checkpoint Phase 1
+
+- [ ] `pytest tests/items/` — tất cả unit + integration pass
+- [ ] Upload flow end-to-end hoạt động trên thiết bị thật (upload → rembg → status = tagging)
+- [ ] RLS verify: user A không thấy items của user B
+- [ ] Auth flow hoạt động: register, login, logout
+
+---
+
+## Phase 2 — Core AI Loop
+
+---
+
+### Task 8: Gemini Vision Tagging
+
+**Description:** ARQ worker tiếp tục pipeline sau rembg: gửi `processed_url` (thumbnail) vào Gemini Vision để tag. Prompt truyền đầy đủ taxonomy enum values. Output JSON được validate — sai enum thì reject và log, không lưu partial data.
+
+**Acceptance criteria:**
+- [ ] Worker gửi thumbnail (không phải full-size) vào `GeminiClient`
+- [ ] Prompt chứa danh sách enum values cho `type`, `style`, `season`, `occasion`
+- [ ] Response JSON validate bằng Pydantic schema — field thiếu hoặc sai enum → `processing_status = failed`
+- [ ] Tags được lưu vào `clothing_items`: `type`, `colors`, `style[]`, `season[]`, `occasion[]`
+- [ ] `processing_status` update: `tagging → ready`
+- [ ] Prompt snapshot test: nếu prompt thay đổi → test fail để review có chủ ý
+- [ ] `GeminiClient` có interface để mock trong test
+
+**Verification:**
+- [ ] Upload ảnh áo thun trắng → `type = t_shirt`, `colors = [{hex: "#FFFFFF", ...}]`, `occasion` chứa ít nhất 1 giá trị hợp lệ
+- [ ] `pytest tests/items/test_tagging.py` pass (mock Gemini)
+- [ ] Gemini trả `"occasion": "office"` → reject, `processing_status = failed`
+
+**Dependencies:** Task 5
+
+**Files likely touched:**
+- `backend/workers/ai_pipeline.py`
+- `backend/items/prompts.py`
+- `tests/items/test_tagging.py`
+
+**Estimated scope:** M
+
+---
+
+### Task 9: Digital Closet API
+
+**Description:** Hoàn thiện `GET /api/items` với đầy đủ filter, sort, full-text search trên tags. Bao gồm query chỉ trả items `ready` + không `deleted_at` khi cần.
+
+**Acceptance criteria:**
+- [ ] Filter by `type`, `occasion[]`, `season[]`, `is_archived`
+- [ ] Sort by `created_at`, `last_worn_at`, `wear_count`
+- [ ] Full-text search trên `custom_tags` (PostgreSQL `@>` array operator hoặc `ilike`)
+- [ ] Pagination: `limit` + `cursor` (keyset, không dùng offset)
+- [ ] Response bao gồm signed URL cho `thumbnail_url` (ngắn hạn, 1 giờ)
+
+**Verification:**
+- [ ] `pytest tests/items/test_integration.py` pass (filter, sort, search, pagination)
+- [ ] Seed 20 items đa dạng → filter `occasion=work` trả đúng subset
+- [ ] Signed URL expire sau 1 giờ
+
+**Dependencies:** Task 4, Task 8
+
+**Files likely touched:**
+- `backend/items/repository.py`
+- `backend/items/schemas.py`
+- `tests/items/test_integration.py`
+
+**Estimated scope:** S
+
+---
+
+### Task 10: Digital Closet UI
+
+**Description:** Màn hình Closet hiển thị grid 2-3 cột, filter bar, item detail screen. Xử lý đầy đủ empty states: chưa có đồ, đang xử lý, xử lý lỗi. Swipe to archive.
+
+**Acceptance criteria:**
+- [ ] Grid 2-3 cột, ảnh `processed_url` trên nền xám nhạt
+- [ ] Filter chips: type, occasion, season
+- [ ] Tap item → item detail: ảnh full, tất cả tags, wear history
+- [ ] Swipe left trên item → archive (soft: ẩn khỏi closet, không xóa)
+- [ ] Empty state: chưa có đồ → CTA "Thêm đồ đầu tiên"
+- [ ] Loading state per item: skeleton khi `processing_status != ready`
+- [ ] Error state per item: icon lỗi + nút retry khi `processing_status = failed`
+
+**Verification:**
+- [ ] Test trên iOS + Android thật với 0, 5, 20 items
+- [ ] Archive item → không còn xuất hiện trong grid
+- [ ] Retry từ item detail hoạt động
+
+**Dependencies:** Task 7, Task 9
+
+**Files likely touched:**
+- `mobile/app/(tabs)/closet.tsx`
+- `mobile/app/item/[id].tsx`
+- `mobile/components/ClosetGrid.tsx`
+- `mobile/components/ItemCard.tsx`
+- `mobile/components/FilterBar.tsx`
+
+**Estimated scope:** M
+
+---
+
+### Task 11: Outfits — Tạo, Edit, Collage
+
+**Description:** API tạo outfit với `outfit_items` (gồm `position` và `role`), generate collage ảnh bằng Pillow, endpoint edit items trong outfit.
+
+**Acceptance criteria:**
+- [ ] `POST /api/outfits` nhận `{name, occasion, items: [{item_id, role, position}]}` → tạo `outfits` + `outfit_items` rows trong 1 transaction
+- [ ] Validate outfit có ít nhất 1 `top` hoặc 1 `bottom` role (cảnh báo, không block)
+- [ ] Pillow generate collage từ `processed_url` của từng item, layout theo role (top trên, bottom dưới, shoes dưới cùng)
+- [ ] `PATCH /api/outfits/{id}/items` cho phép thêm/bớt/reorder items
+- [ ] `GET /api/outfits` trả list với `collage_url` (signed URL)
+
+**Verification:**
+- [ ] `pytest tests/outfits/test_service.py` pass (unit: mock repo + Pillow)
+- [ ] `pytest tests/outfits/test_integration.py` pass
+- [ ] Tạo outfit với item đang `processing_status = failed` → 400 error
+- [ ] Xóa item đang có trong outfit → `ON DELETE RESTRICT` error
+
+**Dependencies:** Task 8, Task 9
+
+**Files likely touched:**
+- `backend/outfits/router.py`
+- `backend/outfits/service.py`
+- `backend/outfits/repository.py`
+- `backend/outfits/models.py`
+- `backend/outfits/schemas.py`
+- `backend/workers/collage.py`
+- `tests/outfits/test_service.py`
+- `tests/outfits/test_integration.py`
+
+**Estimated scope:** L — tách Collage (Task 11b) nếu cần
+
+---
+
+### Task 12: Wear Logging + Suggestion Feedback
+
+**Description:** Log khi user mặc outfit (tạo `wear_logs` với items_snapshot). Capture suggestion feedback vào `suggestion_feedback`. Cả hai cùng update denormalized fields (`wear_count`, `last_worn_at`) trên `clothing_items`.
+
+**Acceptance criteria:**
+- [ ] `POST /api/outfits/{id}/wear` tạo `wear_logs` với `items_snapshot` = snapshot items tại thời điểm đó
+- [ ] Service fetch đầy đủ item data trước khi insert snapshot — không lưu partial
+- [ ] `wear_count` và `last_worn_at` trên mỗi item trong outfit được update trong cùng transaction
+- [ ] `POST /api/outfits/{id}/feedback` tạo `suggestion_feedback` với `action` (enum) + optional `rating`
+- [ ] `rating` chỉ chấp nhận 1-5; `action = dismissed/disliked` + `rating` được cảnh báo nhưng không block
+
+**Verification:**
+- [ ] `pytest tests/outfits/test_service.py` pass (wear log + snapshot)
+- [ ] Edit outfit sau khi log wear → `wear_logs.items_snapshot` không thay đổi
+- [ ] Wear outfit 3 lần → `wear_count = 3` trên tất cả items trong outfit
+
+**Dependencies:** Task 11
+
+**Files likely touched:**
+- `backend/outfits/service.py`
+- `backend/outfits/router.py`
+- `backend/outfits/repository.py`
+- `tests/outfits/test_service.py`
+
+**Estimated scope:** S
+
+---
+
+### Task 13: Weather Endpoint
+
+**Description:** `GET /api/weather` nhận `lat`, `lng` từ query params, gọi OpenWeatherMap API, trả weather context dạng chuẩn cho Gemini prompt.
+
+**Acceptance criteria:**
+- [ ] Nhận `lat`, `lng` → gọi OpenWeatherMap current weather API
+- [ ] Response: `{temp_c, condition, city, icon}` — normalize đơn vị về Celsius
+- [ ] `WeatherClient` có interface để mock trong test
+- [ ] Nếu không có `lat`/`lng` → trả `400 LOCATION_REQUIRED`
+- [ ] Manual weather input: nhận `manual_condition` enum (`hot | warm | cool | cold | rainy`) thay vì gọi API
+
+**Verification:**
+- [ ] `pytest tests/suggest/test_weather.py` pass (mock WeatherClient)
+- [ ] Gọi với `lat=10.76, lng=106.66` (TP.HCM) → trả city "Ho Chi Minh City"
+
+**Dependencies:** Task 2
+
+**Files likely touched:**
+- `backend/suggest/router.py`
+- `backend/suggest/schemas.py`
+- `tests/suggest/test_weather.py`
+
+**Estimated scope:** S
+
+---
+
+### Task 14: Suggest Endpoint + Cache
+
+**Description:** `POST /api/suggest/outfit` là core AI feature. Gate check 15 items, build Gemini prompt với closet context + weather + occasion + lịch sử, cache kết quả theo `(user_id, date, context_hash)`.
+
+**Acceptance criteria:**
+- [ ] Gate: đếm items `processing_status = ready AND deleted_at IS NULL`. Nếu < 15 → `403 CLOSET_NOT_READY {items_count, items_required: 15}`
+- [ ] Cache lookup: tìm `daily_suggestion_cache` theo `(user_id, today, context_hash)`. Cache hit → trả ngay, không gọi Gemini
+- [ ] Cache miss → build prompt với: thumbnail tags của closet, weather context, occasion, 7 ngày wear history
+- [ ] Gemini trả 2-3 outfits → validate → tạo `outfits` records + `outfit_items` + generate collage
+- [ ] Lưu `outfit_ids` vào `daily_suggestion_cache`
+- [ ] `context_hash` = hash của `(closet_item_ids_sorted, weather_condition, occasion)`
+- [ ] Rate limiting: max 10 requests/user/ngày trên endpoint này (slowapi)
+
+**Verification:**
+- [ ] `pytest tests/suggest/test_service.py` pass (mock Gemini + WeatherClient)
+- [ ] `pytest tests/suggest/test_integration.py` pass (cache hit/miss)
+- [ ] User có 14 items → `403 CLOSET_NOT_READY {items_count: 14, items_required: 15}`
+- [ ] Gọi 2 lần cùng context → lần 2 là cache hit (không gọi Gemini)
+- [ ] Gọi cùng ngày nhưng đổi occasion → cache miss → Gemini gọi lại
+
+**Dependencies:** Task 12, Task 13
+
+**Files likely touched:**
+- `backend/suggest/service.py`
+- `backend/suggest/router.py`
+- `backend/suggest/prompts.py`
+- `backend/suggest/schemas.py`
+- `tests/suggest/test_service.py`
+- `tests/suggest/test_integration.py`
+
+**Estimated scope:** L — tách Cache logic (Task 14b) nếu cần
+
+---
+
+### Task 15: Home Screen + Outfit UI
+
+**Description:** Màn hình Home hiển thị thời tiết hôm nay + outfit suggestions. Màn hình Outfit Detail hiển thị collage, items, reasoning, feedback actions.
+
+**Acceptance criteria:**
+- [ ] Home screen: thời tiết current, nút "Gợi ý hôm nay", occasion selector
+- [ ] Location permission xin khi user bấm "Gợi ý" lần đầu; manual fallback nếu từ chối
+- [ ] Hiển thị 2-3 outfit suggestions với collage + reasoning text
+- [ ] Actions per outfit: Save, Mặc hôm nay, Dislike
+- [ ] Outfit detail: items grid, reasoning, wear/feedback buttons
+- [ ] < 15 items → hiển thị progress bar thay vì suggestion (dùng `items_count` từ 403 response)
+
+**Verification:**
+- [ ] Test trên iOS + Android thật
+- [ ] < 15 items → progress bar "Thêm X món đồ nữa"
+- [ ] Bấm "Mặc hôm nay" → `POST /outfits/{id}/wear` được gọi
+
+**Dependencies:** Task 14, Task 10
+
+**Files likely touched:**
+- `mobile/app/(tabs)/index.tsx`
+- `mobile/app/outfit/[id].tsx`
+- `mobile/components/OutfitCard.tsx`
+- `mobile/components/WeatherBadge.tsx`
+- `mobile/components/SuggestionGateProgress.tsx`
+- `mobile/hooks/useSuggest.ts`
+
+**Estimated scope:** M
+
+---
+
+## ✅ Checkpoint Phase 2
+
+- [ ] `pytest tests/outfits/ tests/suggest/` — tất cả unit + integration pass
+- [ ] Core loop end-to-end trên thiết bị thật: upload → tag → closet → suggest → wear log
+- [ ] Cache hoạt động: log `cache hit` khi gọi lần 2 cùng context
+- [ ] Gate hoạt động: < 15 items → progress bar trên Home screen
+
+---
+
+## Phase 3 — Engagement & Polish
+
+---
+
+### Task 16: Analytics Server-Side + UI
+
+**Description:** 3 analytics endpoints tính toán server-side từ `wear_logs` và `clothing_items`. Analytics UI hiển thị kết quả đã aggregate.
+
+**Acceptance criteria:**
+- [ ] `GET /api/analytics/colors` trả top colors theo `wear_count` của items
+- [ ] `GET /api/analytics/unworn` trả items `wear_count = 0 AND processing_status = ready AND deleted_at IS NULL`
+- [ ] `GET /api/analytics/history` trả calendar data: `[{date, outfit_id, collage_url}]` cho 30 ngày gần nhất
+- [ ] Analytics UI: bar chart màu (top 5), unworn items grid, calendar view
+
+**Verification:**
+- [ ] `pytest tests/analytics/` pass (seed data → verify aggregation chính xác)
+- [ ] Seed: mặc outfit A (có áo đỏ) 3 lần → màu đỏ xuất hiện top 1 analytics
+
+**Dependencies:** Task 12
+
+**Files likely touched:**
+- `backend/analytics/router.py`
+- `backend/analytics/service.py`
+- `backend/analytics/repository.py`
+- `backend/analytics/schemas.py`
+- `mobile/app/(tabs)/analytics.tsx`
+- `tests/analytics/test_service.py`
+- `tests/analytics/test_integration.py`
+
+**Estimated scope:** M
+
+---
+
+### Task 17: Gamification + Onboarding
+
+**Description:** Progress bar unlock suggestion (dùng `items_count` từ API — không cần logic mới), streak counter, badge đầu tiên. Onboarding 3-bước cho user mới.
+
+**Acceptance criteria:**
+- [ ] Progress bar trên Home: `{items_count}/15 món đồ` — tự update khi upload thêm
+- [ ] Badge "Tủ đồ đầu tiên" hiển thị khi `items_count` đạt 15 lần đầu (one-time, lưu local hoặc `users.style_preferences`)
+- [ ] Streak counter: số ngày liên tiếp user xem suggestion — hiển thị trên Home
+- [ ] Onboarding 3 slides: "Chụp → AI tag → Mặc ngay" → chỉ show lần đầu (AsyncStorage flag)
+
+**Verification:**
+- [ ] Upload item 15 → badge animation xuất hiện
+- [ ] Xem suggestion 3 ngày liên tiếp → streak = 3
+- [ ] Uninstall + reinstall → onboarding show lại
+
+**Dependencies:** Task 15
+
+**Files likely touched:**
+- `mobile/app/(tabs)/index.tsx`
+- `mobile/components/StreakBadge.tsx`
+- `mobile/components/OnboardingSlides.tsx`
+- `mobile/hooks/useStreak.ts`
+
+**Estimated scope:** S
+
+---
+
+### Task 18: Push Notifications
+
+**Description:** Đăng ký Expo Push Token, lưu vào `push_tokens`, gửi notification sáng hàng ngày nhắc user xem suggestion.
+
+**Acceptance criteria:**
+- [ ] App request notification permission khi user login lần đầu
+- [ ] Expo Push Token được lưu vào `push_tokens` sau khi grant permission
+- [ ] ARQ scheduled job chạy 7:00 sáng gửi push đến tất cả users có token
+- [ ] Tap notification → navigate đến Home screen với suggestion
+- [ ] `DELETE /api/push-tokens` cho phép user opt out
+
+**Verification:**
+- [ ] Đăng ký trên thiết bị thật → token xuất hiện trong DB
+- [ ] Trigger job thủ công → push nhận được trên thiết bị
+
+**Dependencies:** Task 15, Task 3
+
+**Files likely touched:**
+- `backend/workers/notifications.py`
+- `mobile/hooks/usePushToken.ts`
+- `mobile/app/(tabs)/index.tsx`
+
+**Estimated scope:** S
+
+---
+
+## ✅ Checkpoint Phase 3
+
+- [ ] `pytest tests/analytics/` pass
+- [ ] End-to-end engagement flow: upload 15 items → badge → suggestion → streak
+- [ ] Push notification nhận được trên thiết bị thật
+
+---
+
+## Phase 4 — Launch Prep
+
+---
+
+### Task 19: Deployment + CD Pipeline
+
+**Description:** Deploy lên Railway: API server + ARQ worker + Redis. Config CD tự động: merge vào `main` → Railway auto-deploy. Config production env vars. Verify rate limiting.
+
+**Acceptance criteria:**
+- [ ] 3 services trên Railway: `api`, `worker`, `redis` (managed)
+- [ ] `api` start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+- [ ] `worker` start command: `arq backend.workers.main.WorkerSettings`
+- [ ] `api` và `worker` deploy từ cùng repo, cùng branch `main`, khác start command
+- [ ] Tất cả env vars set trong Railway dashboard — không commit giá trị thật
+- [ ] `GET /health` public trả `200` trên production URL
+- [ ] CD pipeline: GitHub Actions job `cd-deploy` chạy khi merge vào `main`
+  - Trigger Railway redeploy `api` + `worker` qua Railway deploy hook
+  - Chỉ trigger sau khi `ci-backend` + `ci-mobile` pass
+- [ ] slowapi rate limiting: `POST /api/suggest/outfit` max 10 req/user/day, `POST /api/items/upload` max 50 req/user/day
+- [ ] Supabase production project tách riêng với dev project
+
+**Verification:**
+- [ ] Merge 1 PR vào `main` → Railway tự deploy trong < 3 phút
+- [ ] Upload ảnh từ điện thoại thật → processed trên production
+- [ ] Gọi suggest 11 lần trong ngày → lần 11 nhận 429
+
+**Dependencies:** Task 18
+
+**Files likely touched:**
+- `backend/main.py` (rate limiter setup)
+- `railway.toml`
+- `.env.example`
+- `.github/workflows/cd.yml`
+
+**Estimated scope:** M
+
+---
+
+### Task 20: Quality Sweep + Manual AI Testing
+
+**Description:** Error handling sweep toàn bộ external calls. Manual test AI accuracy. Remove BG visual test.
+
+**Acceptance criteria:**
+- [ ] Mọi `GeminiClient`, `WeatherClient`, `BackgroundRemovalClient` call có try/except → update `processing_status` hoặc trả AppException rõ ràng
+- [ ] Manual test: upload 20 ảnh đồ thật → ≥ 80% tags chính xác
+- [ ] Remove BG visual test: nền trắng, nền tối, nền phức tạp → chất lượng chấp nhận được
+- [ ] Không có `print()` hoặc `console.log()` trong production code
+
+**Verification:**
+- [ ] `grep -r "print(" backend/` → 0 results
+- [ ] Manual checklist AI accuracy ký tên
+
+**Dependencies:** Task 19
+
+**Files likely touched:**
+- `backend/workers/bg_removal.py`
+- `backend/workers/ai_pipeline.py`
+- `backend/suggest/service.py`
+
+**Estimated scope:** S
+
+---
+
+### Task 21: EAS Build + Store Submission
+
+**Description:** Setup EAS Build cho iOS + Android. Chuẩn bị store assets và privacy policy.
+
+**Acceptance criteria:**
+- [ ] `eas build --platform all` thành công
+- [ ] iOS build submit lên TestFlight
+- [ ] Android build submit lên Play Store Internal Testing
+- [ ] App icon, splash screen, store screenshots (5 màn hình)
+- [ ] Privacy policy URL live (có thể là GitHub Pages hoặc Notion) — đề cập đến ảnh cá nhân, account deletion, không bán data
+- [ ] `expo-camera` và location permission strings trong `app.json` rõ ràng
+
+**Verification:**
+- [ ] Install từ TestFlight trên iPhone thật → core loop hoạt động
+- [ ] Install từ Play Store internal → core loop hoạt động
+
+**Dependencies:** Task 19
+
+**Files likely touched:**
+- `mobile/app.json`
+- `mobile/eas.json`
+- `mobile/assets/` (icon, splash)
+
+**Estimated scope:** M
+
+---
+
+## ✅ Checkpoint Phase 4 — Launch Ready
+
+- [ ] Core loop hoạt động end-to-end trên production từ TestFlight + Play Store internal
+- [ ] AI tag accuracy ≥ 80% (manual test)
+- [ ] Rate limiting hoạt động trên production
+- [ ] Privacy policy live
+
+---
+
+## Risks & Mitigations
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| rembg chất lượng kém với ảnh nền phức tạp | High | Remove.bg fallback + user "Improve cutout" button |
+| Gemini output không khớp taxonomy enum | High | Pydantic validation strict, reject + log, processing_status = failed |
+| Gemini API cost vượt budget | Medium | Cache suggestion theo context_hash, rate limit 10 req/user/day, dùng Flash-Lite cho suggestion |
+| ARQ worker crash mất jobs | Medium | Redis persistence, job retry 3 lần, `processing_status` làm checkpoint |
+| App Store reject vì camera/location permission | Medium | Permission strings rõ ràng trong app.json, chỉ xin khi cần |
+| User không upload đủ 15 items | High | Gamification + onboarding, batch upload, progress bar rõ ràng |
+
+## Open Questions
+
+- `streak_count` update logic: cron job hàng ngày reset streak nếu user không xem suggestion, hay chỉ update khi user mở app?
+- Collage layout: flat-lay style hay grid? Cần design mockup trước Task 11.
+- Signed URL TTL: 1 giờ đủ chưa hay cần refresh mechanism ở mobile?
