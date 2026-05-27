@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+.env
+*.log
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ruff / Mypy
+.ruff_cache/
+.mypy_cache/
+
+# Expo / React Native
+node_modules/
+.expo/
+ios/
+android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+.env.local
+.env.production
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Supabase
+supabase/.temp/
