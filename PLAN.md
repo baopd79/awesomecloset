@@ -116,18 +116,18 @@ Git repo + CI (GitHub Actions)
 **Description:** Tạo toàn bộ DB schema trên Supabase: taxonomy enums, tất cả tables, indexes, RLS policies, storage bucket config. Đây là foundation — mọi task khác phụ thuộc vào đây.
 
 **Acceptance criteria:**
-- [ ] 7 taxonomy enums tồn tại: `clothing_type`, `clothing_style`, `clothing_season`, `clothing_occasion`, `processing_status`, `feedback_action`, `outfit_item_role`
-- [ ] 8 tables tồn tại với đúng columns + FK + constraints theo spec Section 4
-- [ ] `users.id` references `auth.users(id) ON DELETE CASCADE`
-- [ ] `outfit_items` có `PRIMARY KEY(outfit_id, item_id)`, `ON DELETE RESTRICT` trên `item_id`
-- [ ] `daily_suggestion_cache` có `UNIQUE(user_id, suggestion_date, context_hash)`
-- [ ] Index tối thiểu được tạo: `clothing_items(user_id, is_archived, deleted_at)`, `clothing_items(user_id, type)`, `outfit_items(item_id)`, `outfits(user_id, created_at)`, `wear_logs(user_id, worn_date)`
-- [ ] RLS enabled trên tất cả tables — user chỉ SELECT/INSERT/UPDATE/DELETE rows của mình
-- [ ] Storage bucket `closet-images` tạo với private access
+- [x] 7 taxonomy enums tồn tại: `clothing_type`, `clothing_style`, `clothing_season`, `clothing_occasion`, `processing_status`, `feedback_action`, `outfit_item_role`
+- [x] 8 tables tồn tại với đúng columns + FK + constraints theo spec Section 4
+- [x] `users.id` references `auth.users(id) ON DELETE CASCADE`
+- [x] `outfit_items` có `PRIMARY KEY(outfit_id, item_id)`, `ON DELETE RESTRICT` trên `item_id`
+- [x] `daily_suggestion_cache` có `UNIQUE(user_id, suggestion_date, context_hash)`
+- [x] Index tối thiểu được tạo: `clothing_items(user_id, is_archived, deleted_at)`, `clothing_items(user_id, type)`, `outfit_items(item_id)`, `outfits(user_id, created_at)`, `wear_logs(user_id, worn_date)`
+- [x] RLS enabled trên tất cả tables — user chỉ SELECT/INSERT/UPDATE/DELETE rows của mình
+- [x] Storage bucket `closet-images` tạo với private access
 
 **Verification:**
-- [ ] `supabase db push` không có lỗi
-- [ ] Query `SELECT * FROM clothing_items` với user không đúng trả 0 rows (RLS hoạt động)
+- [x] `supabase db push` không có lỗi
+- [x] Query `SELECT * FROM clothing_items` với user không đúng trả 0 rows (RLS hoạt động)
 - [ ] Thử insert `clothing_items` với `type = 'invalid'` → constraint error
 
 **Dependencies:** None
