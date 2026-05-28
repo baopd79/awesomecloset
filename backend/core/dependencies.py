@@ -30,7 +30,8 @@ async def get_current_user_id(
         if not user_id:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
         return user_id
-    except JWTError:
+    except JWTError as e:
+        print(f"[DEBUG] alg={jwt.get_unverified_header(credentials.credentials).get('alg')} error={e} secret={repr(settings.supabase_jwt_secret[:10])}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 
