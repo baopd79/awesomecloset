@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from backend.core.exceptions import AppException
 from backend.core.logging import request_logging_middleware
+from backend.items.router import router as items_router
 from backend.workers.main import get_redis_settings
 
 
@@ -19,6 +20,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AwesomeCloset API", lifespan=lifespan)
 
 app.middleware("http")(request_logging_middleware)
+app.include_router(items_router)
 
 
 @app.exception_handler(AppException)
