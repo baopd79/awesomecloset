@@ -78,23 +78,23 @@ Git repo + CI (GitHub Actions)
 **Description:** Khởi tạo git repo, branch protection, `.gitignore`, và GitHub Actions CI pipeline. CI chạy backend tests + mobile type check trên mỗi PR — chỉ chạy job liên quan đến code thay đổi. Setup một lần trước tất cả tasks, không phụ thuộc vào tech stack cụ thể.
 
 **Acceptance criteria:**
-- [ ] Git repo khởi tạo, `main` branch protected — không push trực tiếp, chỉ merge qua PR
-- [ ] `.gitignore` cover: Python (`__pycache__/`, `.env`, `.venv/`, `*.pyc`), Expo (`node_modules/`, `.expo/`, `ios/`, `android/`, `.env.local`), general (`.DS_Store`, `*.log`)
-- [ ] `.env.example` commit với tất cả required env vars (không có giá trị thật)
-- [ ] `pyproject.toml` với `[project]` dependencies + `[project.optional-dependencies] dev` — quản lý bằng `uv`
-- [ ] GitHub Actions — job `ci-backend`: chạy khi `backend/**` hoặc `tests/**` thay đổi
+- [x] Git repo khởi tạo, `main` branch protected — không push trực tiếp, chỉ merge qua PR
+- [x] `.gitignore` cover: Python (`__pycache__/`, `.env`, `.venv/`, `*.pyc`), Expo (`node_modules/`, `.expo/`, `ios/`, `android/`, `.env.local`), general (`.DS_Store`, `*.log`)
+- [x] `.env.example` commit với tất cả required env vars (không có giá trị thật)
+- [x] `pyproject.toml` với `[project]` dependencies + `[project.optional-dependencies] dev` — quản lý bằng `uv`
+- [x] GitHub Actions — job `ci-backend`: chạy khi `backend/**` hoặc `tests/**` thay đổi
   - `uv run ruff check backend/` — lint
   - `uv run pytest tests/ --tb=short` — toàn bộ tests
-- [ ] GitHub Actions — job `ci-mobile`: chạy khi `mobile/**` thay đổi
+- [x] GitHub Actions — job `ci-mobile`: chạy khi `mobile/**` thay đổi
   - `npx tsc --noEmit` — TypeScript strict check
   - `npx eslint mobile/` — lint
-- [ ] PR không merge được nếu CI fail (branch protection rule)
+- [x] PR không merge được nếu CI fail (branch protection rule)
 
 **Verification:**
-- [ ] Push branch với `print("debug")` trong Python → ruff fail → PR blocked
-- [ ] Push branch với `const x: any = 1` trong TypeScript → tsc fail → PR blocked
-- [ ] Push branch với test fail → pytest fail → PR blocked
-- [ ] Sửa chỉ `mobile/` → `ci-backend` không chạy (path filter hoạt động)
+- [x] Push branch với `print("debug")` trong Python → ruff fail → PR blocked
+- [x] Push branch với `const x: any = 1` trong TypeScript → tsc fail → PR blocked
+- [x] Push branch với test fail → pytest fail → PR blocked
+- [x] Sửa chỉ `mobile/` → `ci-backend` không chạy (path filter hoạt động)
 
 **Dependencies:** None
 
@@ -148,17 +148,17 @@ Git repo + CI (GitHub Actions)
 **Description:** Khởi tạo FastAPI project với toàn bộ `core/` layer: database session, `transaction()` helper, `AppException` hierarchy, DI factory, config via pydantic-settings, loguru structured logging. Đây là shared foundation cho tất cả features.
 
 **Acceptance criteria:**
-- [ ] `get_db()` yield `AsyncSession` không begin transaction
-- [ ] `transaction(session)` async context manager: commit on success, rollback on exception
-- [ ] `AppException(code, status, **extra)` raise được từ service, router translate sang HTTP response đúng format
-- [ ] `Settings` load từ `.env` qua pydantic-settings — app fail fast nếu thiếu required env var
-- [ ] loguru log mỗi request với `request_id`, `user_id`, method, path, status code, duration
-- [ ] `GET /health` trả `{"status": "ok"}`
+- [x] `get_db()` yield `AsyncSession` không begin transaction
+- [x] `transaction(session)` async context manager: commit on success, rollback on exception
+- [x] `AppException(code, status, **extra)` raise được từ service, router translate sang HTTP response đúng format
+- [x] `Settings` load từ `.env` qua pydantic-settings — app fail fast nếu thiếu required env var
+- [x] loguru log mỗi request với `request_id`, `user_id`, method, path, status code, duration
+- [x] `GET /health` trả `{"status": "ok"}`
 
 **Verification:**
-- [ ] `pytest tests/test_core.py` pass
-- [ ] Raise `AppException(code="TEST", status=404)` trong router → response `{"code": "TEST"}` với status 404
-- [ ] `uv run uvicorn backend.main:app` khởi động không lỗi
+- [x] `pytest tests/test_core.py` pass
+- [x] Raise `AppException(code="TEST", status=404)` trong router → response `{"code": "TEST"}` với status 404
+- [x] `uv run uvicorn backend.main:app` khởi động không lỗi
 
 **Dependencies:** Task 1 (DB connection string từ Supabase)
 

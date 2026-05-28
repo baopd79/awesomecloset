@@ -1,10 +1,22 @@
+from contextlib import asynccontextmanager
+
+from arq import create_pool
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from backend.core.exceptions import AppException
 from backend.core.logging import request_logging_middleware
+from backend.workers.main import get_redis_settings
 
-app = FastAPI(title="AwesomeCloset API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.arq = await create_pool(get_redis_settings())
+    yield
+    await app.state.arq.aclose()
+
+
+app = FastAPI(title="AwesomeCloset API", lifespan=lifespan)
 
 app.middleware("http")(request_logging_middleware)
 
