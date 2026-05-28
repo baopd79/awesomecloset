@@ -130,7 +130,7 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -151,21 +151,24 @@ requires-dist = [
     { name = "pillow", specifier = "==10.4.0" },
     { name = "pydantic", specifier = "==2.9.2" },
     { name = "pydantic-settings", specifier = "==2.5.2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = "==8.3.3" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = "==0.24.0" },
-    { name = "pytest-mock", marker = "extra == 'dev'", specifier = "==3.14.0" },
     { name = "python-jose", extras = ["cryptography"], specifier = "==3.3.0" },
     { name = "python-multipart", specifier = "==0.0.12" },
     { name = "redis", specifier = "==5.1.1" },
     { name = "rembg", specifier = "==2.0.57" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = "==0.6.9" },
     { name = "slowapi", specifier = "==0.1.9" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = "==2.0.35" },
     { name = "sqlmodel", specifier = "==0.0.21" },
-    { name = "testcontainers", extras = ["postgres"], marker = "extra == 'dev'", specifier = "==4.8.1" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.30.6" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = "==8.3.3" },
+    { name = "pytest-asyncio", specifier = "==0.24.0" },
+    { name = "pytest-mock", specifier = "==3.14.0" },
+    { name = "ruff", specifier = "==0.6.9" },
+    { name = "testcontainers", extras = ["postgres"], specifier = "==4.8.1" },
+]
 
 [[package]]
 name = "certifi"

@@ -1,10 +1,15 @@
-from fastapi import Depends, HTTPException, status
+from arq import ArqRedis
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from backend.core.config import settings
 
 bearer = HTTPBearer()
+
+
+async def get_arq(request: Request) -> ArqRedis:
+    return request.app.state.arq
 
 
 async def get_current_user_id(
