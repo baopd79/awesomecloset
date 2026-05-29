@@ -91,6 +91,47 @@ def _make_service(session=Depends(get_db), ...) -> XxxService:
 - Không dùng `async with session.begin()` — conflict với asyncpg autobegin.
 - `get_db` chỉ yield session, không manage transaction.
 
+### Thứ tự side effects ngoài DB
+
+Side effects không thể rollback (Redis job, Storage upload) phải được thực hiện **sau** DB commit — không đặt trong `transaction()` block:
+
+```python
+# ✅ enqueue sau commit
+async with transaction(self._session):
+    item = await self._repo.create(item)
+await self._arq.enqueue_job("process_item", str(item.id))  # sau commit
+
+# ❌ enqueue trong transaction — Redis nhận job trước khi DB commit xong
+async with transaction(self._session):
+    item = await self._repo.create(item)
+    await self._arq.enqueue_job("process_item", str(item.id))
+```
+
+**Nếu enqueue fail sau commit** → update status về `failed` + lưu error để user có thể retry:
+
+```python
+try:
+    await self._arq.enqueue_job("process_item", str(item.id))
+except Exception as exc:
+    async with transaction(self._session):
+        await self._repo.update_status(item, ProcessingStatus.failed, error=str(exc))
+    raise
+```
+
+**Nếu Storage upload trước DB** → cleanup storage best-effort khi DB fail, dùng nested try/except để không che exception gốc:
+
+```python
+await self._storage.upload(BUCKET, path, content, content_type)
+try:
+    async with transaction(self._session):
+        item = await self._repo.create(item)
+except Exception:
+    try:
+        await self._storage.delete(BUCKET, path)  # best-effort
+    except Exception:
+        pass  # orphan file acceptable, không che DB exception
+    raise
+
 ---
 
 ## Exception Handling
@@ -239,6 +280,69 @@ processed_url: Optional[str] = None
 - **Integration tests** (`test_integration.py`): Testcontainers Postgres, test Router → Service → Repository → DB, mock chỉ external AI APIs.
 - Không dùng SQLite in-memory cho integration test — không cover `jsonb`, array, uuid, Postgres-specific behavior.
 - Mỗi module phải pass hết test trước khi chuyển sang module tiếp theo.
+
+---
+
+## Supabase JWT Verification
+
+Từ tháng 10/2025, Supabase mặc định dùng asymmetric key (ES256/RS256) thay vì HS256 shared secret.
+
+### Cách cũ — Legacy HS256 (deprecated)
+
+```python
+# python-jose, verify bằng shared secret
+payload = jwt.decode(
+    token,
+    settings.supabase_jwt_secret,  # secret trong Supabase dashboard
+    algorithms=["HS256"],
+    options={"verify_aud": False},
+)
+```
+
+- Cần `SUPABASE_JWT_SECRET` trong `.env`
+- Symmetric — secret phải giữ bí mật, không rotate được dễ dàng
+- Vẫn hoạt động nếu Supabase project bật "Legacy JWT Secret"
+
+### Cách mới — ES256 via JWKS (hiện tại)
+1. backend/core/auth.py (mới) — JWKSClient:
+- Fetch keys từ {supabase_url}/auth/v1/.well-known/jwks.json
+- Cache by kid
+- Auto-refresh khi gặp kid chưa có (handle key rotation)
+
+2. backend/main.py — init JWKSClient trong lifespan, lưu vào app.state
+
+3. backend/core/dependencies.py — get_current_user_id đọc kid từ header → lấy public key từ JWKSClient → verify ES256
+
+4. backend/core/config.py — supabase_jwt_secret thành optional (giữ backward compat, không xóa ngay)
+
+python-jose[cryptography] đã support ES256 với JWK dict, không cần cài thêm gì.
+
+```python
+# core/auth.py — JWKSClient
+class JWKSClient:
+    async def fetch(self):  # gọi 1 lần lúc startup
+        ...  # GET {supabase_url}/auth/v1/.well-known/jwks.json
+
+    def decode(self, token: str) -> dict:
+        header = jwt.get_unverified_header(token)
+        key = self._keys[header["kid"]]  # cache by kid
+        return jwt.decode(token, key, algorithms=["ES256"], ...)
+```
+
+**Setup:**
+1. Supabase Dashboard → Settings → Auth → JWT Signing Keys → promote ECC key lên Current
+2. `JWKSClient` init trong `lifespan`, lưu vào `app.state.jwks`
+3. `get_current_user_id` inject qua `Depends(get_jwks)`
+
+**Ưu điểm:**
+- Không cần `SUPABASE_JWT_SECRET` trong `.env`
+- Auto-refresh khi key rotation (fetch lại khi gặp `kid` lạ)
+- Fail fast lúc startup nếu JWKS endpoint không accessible
+- Mockable trong test qua `app.state`
+
+**Lưu ý:**
+- `PyJWT + PyJWKClient` là alternative ngắn hơn nhưng `PyJWKClient` là module-level global → không inject được vào app lifecycle, không mock được sạch trong test
+- Không bật `verify_aud: False` nếu muốn verify đúng `aud: "authenticated"` của Supabase
 
 ---
 
