@@ -4,6 +4,8 @@ from arq import create_pool
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from backend.core.auth import JWKSClient
+from backend.core.config import settings
 from backend.core.exceptions import AppException
 from backend.core.logging import request_logging_middleware
 from backend.items.router import router as items_router
@@ -12,6 +14,9 @@ from backend.workers.main import get_redis_settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    jwks_client = JWKSClient(f"{settings.supabase_url}/auth/v1/.well-known/jwks.json")
+    await jwks_client.fetch()
+    app.state.jwks = jwks_client
     app.state.arq = await create_pool(get_redis_settings())
     yield
     await app.state.arq.aclose()

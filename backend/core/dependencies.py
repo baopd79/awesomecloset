@@ -3,10 +3,10 @@ from typing import Annotated
 from arq import ArqRedis
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jose import JWTError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from backend.core.config import settings
+from backend.core.auth import JWKSClient
 from backend.core.database import get_db
 
 bearer = HTTPBearer()
@@ -16,22 +16,21 @@ async def get_arq(request: Request) -> ArqRedis:
     return request.app.state.arq
 
 
+async def get_jwks(request: Request) -> JWKSClient:
+    return request.app.state.jwks
+
+
 async def get_current_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(bearer),
+    jwks: JWKSClient = Depends(get_jwks),
 ) -> str:
     try:
-        payload = jwt.decode(
-            credentials.credentials,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
-            options={"verify_aud": False},
-        )
+        payload = jwks.decode(credentials.credentials)
         user_id: str | None = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
         return user_id
-    except JWTError as e:
-        print(f"[DEBUG] alg={jwt.get_unverified_header(credentials.credentials).get('alg')} error={e} secret={repr(settings.supabase_jwt_secret[:10])}")
+    except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 
