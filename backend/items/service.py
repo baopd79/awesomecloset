@@ -2,6 +2,7 @@ import io
 import uuid
 from uuid import UUID
 
+from arq import ArqRedis
 from fastapi import UploadFile
 from PIL import Image
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -25,7 +26,7 @@ BUCKET = "closet-images"
 
 
 class ItemService:
-    def __init__(self, session: AsyncSession, repo: ItemRepository, storage: StorageClient, arq):
+    def __init__(self, session: AsyncSession, repo: ItemRepository, storage: StorageClient, arq: ArqRedis):
         self._session = session
         self._repo = repo
         self._storage = storage
@@ -48,9 +49,21 @@ class ItemService:
             original_url=storage_path,
             processing_status=ProcessingStatus.pending,
         )
-        async with transaction(self._session):
-            item = await self._repo.create(item)
+        try:
+            async with transaction(self._session):
+                item = await self._repo.create(item)
+        except Exception:
+            try:
+                await self._storage.delete(BUCKET, storage_path)
+            except Exception:
+                pass  # best-effort, orphan file acceptable
+            raise
+        try:
             await self._arq.enqueue_job("process_item", str(item.id))
+        except Exception as exc:
+            async with transaction(self._session):
+                await self._repo.update_status(item, ProcessingStatus.failed, error=str(exc))
+            raise
 
         return item
 
@@ -103,7 +116,12 @@ class ItemService:
             )
         async with transaction(self._session):
             await self._repo.update_status(item, ProcessingStatus.pending, error=None)
+        try:
             await self._arq.enqueue_job("process_item", str(item_id))
+        except Exception as exc:
+            async with transaction(self._session):
+                await self._repo.update_status(item, ProcessingStatus.failed, error=str(exc))
+            raise
         return item
 
 
