@@ -7,7 +7,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:
 os.environ.setdefault("SUPABASE_URL", "http://localhost")
 os.environ.setdefault("SUPABASE_ANON_KEY", "test")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test")
-os.environ.setdefault("SUPABASE_JWT_SECRET", "test-jwt-secret-must-be-at-least-32-chars!")
+os.environ.setdefault("SUPABASE_JWT_SECRET", "")
 os.environ.setdefault("GEMINI_API_KEY", "test")
 os.environ.setdefault("GEMINI_TAGGING_MODEL", "gemini-2.0-flash")
 os.environ.setdefault("GEMINI_SUGGESTION_MODEL", "gemini-2.0-flash")
