@@ -1,6 +1,7 @@
 from urllib.parse import urlparse
 
 from arq.connections import RedisSettings
+from loguru import logger
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -35,8 +36,10 @@ async def startup(ctx: dict) -> None:
     ctx["engine"] = engine
     ctx["session_factory"] = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     ctx["storage"] = SupabaseStorageClient(settings.supabase_url, settings.supabase_service_role_key)
-    # Load rembg model once — expensive, avoid per-job.
+    # Load rembg model once — expensive, avoid per-job. Downloads ~170MB on first run.
+    logger.info("rembg: loading u2net model (first run may take a few minutes)...")
     rembg_session = await asyncio.to_thread(rembg.new_session, "u2net")
+    logger.info("rembg: model ready")
     ctx["bg_client"] = RembgClient(rembg_session)
     ctx["fallback_client"] = RemoveBgApiClient(settings.removebg_api_key) if settings.removebg_api_key else None
 

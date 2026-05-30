@@ -7,7 +7,7 @@ class StorageClient(ABC):
     """Abstract interface for object storage — swap implementation without touching service layer."""
 
     @abstractmethod
-    async def upload(self, bucket: str, path: str, content: bytes, content_type: str) -> str: ...
+    async def upload(self, bucket: str, path: str, content: bytes, content_type: str, upsert: bool = False) -> str: ...
 
     @abstractmethod
     async def download(self, bucket: str, path: str) -> bytes: ...
@@ -29,12 +29,15 @@ class SupabaseStorageClient(StorageClient):
             "apikey": service_role_key,
         }
 
-    async def upload(self, bucket: str, path: str, content: bytes, content_type: str) -> str:
+    async def upload(self, bucket: str, path: str, content: bytes, content_type: str, upsert: bool = False) -> str:
+        headers = {**self._headers, "Content-Type": content_type}
+        if upsert:
+            headers["x-upsert"] = "true"
         async with httpx.AsyncClient() as client:
             resp = await client.post(
                 f"{self._base}/object/{bucket}/{path}",
                 content=content,
-                headers={**self._headers, "Content-Type": content_type},
+                headers=headers,
             )
             resp.raise_for_status()
         return f"{bucket}/{path}"

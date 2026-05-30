@@ -54,8 +54,9 @@ async def _run_pipeline(ctx: dict, session: AsyncSession, item_id: UUID) -> None
 
         thumbnail_bytes = _make_thumbnail(removed_bytes)
 
-        await storage.upload(BUCKET, processed_path, removed_bytes, "image/png")
-        await storage.upload(BUCKET, thumbnail_path, thumbnail_bytes, "image/jpeg")
+        # upsert=True: safe to retry — overwrites partial results from a previous failed attempt.
+        await storage.upload(BUCKET, processed_path, removed_bytes, "image/png", upsert=True)
+        await storage.upload(BUCKET, thumbnail_path, thumbnail_bytes, "image/jpeg", upsert=True)
 
     except Exception as exc:
         logger.error(f"process_item failed | item_id={item_id} error={exc}")
