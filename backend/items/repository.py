@@ -25,6 +25,15 @@ class ItemRepository:
         await self._session.refresh(item)
         return item
 
+    async def get_by_id_system(self, item_id: UUID) -> ClothingItem | None:
+        """Fetch by item_id only, no user_id scope — for worker/background use."""
+        stmt = select(ClothingItem).where(
+            ClothingItem.id == item_id,
+            ClothingItem.deleted_at.is_(None),
+        )
+        result = await self._session.exec(stmt)
+        return result.first()
+
     async def get_by_id(self, item_id: UUID, user_id: UUID) -> ClothingItem | None:
         stmt = select(ClothingItem).where(
             ClothingItem.id == item_id,
