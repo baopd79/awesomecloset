@@ -1,5 +1,6 @@
 from urllib.parse import urlparse
 
+from arq import create_pool
 from arq.connections import RedisSettings
 from loguru import logger
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -7,6 +8,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from backend.core.config import settings
 from backend.core.storage import SupabaseStorageClient
+from backend.items.repository import ItemRepository
+from backend.items.service import _job_id
 from backend.workers.bg_removal import RemoveBgApiClient, RembgClient
 from backend.workers.tasks import process_item
 
@@ -43,9 +46,39 @@ async def startup(ctx: dict) -> None:
     ctx["bg_client"] = RembgClient(rembg_session)
     ctx["fallback_client"] = RemoveBgApiClient(settings.removebg_api_key) if settings.removebg_api_key else None
 
+    ctx["arq"] = await create_pool(get_redis_settings())
+    await _recover_orphaned(ctx)
+
+
+async def _recover_orphaned(ctx: dict) -> None:
+    """On startup: re-enqueue items stuck in processing states for >{threshold}min.
+
+    Uses deterministic _job_id so concurrent worker instances are safe — ARQ deduplicates
+    if the same job_id is already queued or in-progress.
+    """
+    async with ctx["session_factory"]() as session:
+        items = await ItemRepository(session).list_orphaned()
+
+    if not items:
+        return
+
+    recovered = 0
+    for item in items:
+        job = await ctx["arq"].enqueue_job(
+            "process_item",
+            str(item.id),
+            _job_id=_job_id(item.id),
+        )
+        if job is not None:
+            recovered += 1
+            logger.info(f"recovery: re-enqueued item_id={item.id} status={item.processing_status}")
+
+    logger.info(f"recovery: {recovered}/{len(items)} orphaned items re-enqueued")
+
 
 async def shutdown(ctx: dict) -> None:
     await ctx["engine"].dispose()
+    await ctx["arq"].aclose()
 
 
 class WorkerSettings:

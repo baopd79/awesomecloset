@@ -61,7 +61,7 @@ class ItemService:
                 pass  # best-effort, orphan file acceptable
             raise
         try:
-            await self._arq.enqueue_job("process_item", str(item.id))
+            await self._arq.enqueue_job("process_item", str(item.id), _job_id=_job_id(item.id))
         except Exception as exc:
             async with transaction(self._session):
                 await self._repo.update_status(item, ProcessingStatus.failed, error=str(exc))
@@ -119,7 +119,7 @@ class ItemService:
         async with transaction(self._session):
             await self._repo.update_status(item, ProcessingStatus.pending, error=None)
         try:
-            await self._arq.enqueue_job("process_item", str(item_id))
+            await self._arq.enqueue_job("process_item", str(item_id), _job_id=_job_id(item_id))
         except Exception as exc:
             async with transaction(self._session):
                 await self._repo.update_status(item, ProcessingStatus.failed, error=str(exc))
@@ -127,8 +127,16 @@ class ItemService:
         return item
 
 
+def _job_id(item_id: UUID) -> str:
+    # Deterministic job ID — ARQ deduplicates if same ID is already queued/in-progress.
+    return f"process_item:{item_id}"
+
+
 def _compress_image(content: bytes) -> bytes:
-    img = Image.open(io.BytesIO(content))
+    try:
+        img = Image.open(io.BytesIO(content))
+    except Exception:
+        raise AppException(code="INVALID_IMAGE", status=400)
     img = img.convert("RGB")
     if img.width > MAX_DIMENSION or img.height > MAX_DIMENSION:
         img.thumbnail((MAX_DIMENSION, MAX_DIMENSION), Image.LANCZOS)
