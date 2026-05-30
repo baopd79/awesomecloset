@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api/items", tags=["items"])
 
 
 def _make_service(session: SessionDep, arq: ArqDep) -> ItemService:
+    # Composition root — assembles all dependencies for ItemService.
     repo = ItemRepository(session)
     storage = SupabaseStorageClient(settings.supabase_url, settings.supabase_service_role_key)
     return ItemService(session, repo, storage, arq)

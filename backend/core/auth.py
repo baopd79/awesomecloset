@@ -4,11 +4,14 @@ from loguru import logger
 
 
 class JWKSClient:
+    """Fetches and caches Supabase public keys; verifies ES256 JWT tokens."""
+
     def __init__(self, jwks_url: str):
         self._url = jwks_url
         self._keys: dict[str, dict] = {}
 
     async def fetch(self) -> None:
+        """Fetches all keys from JWKS endpoint and rebuilds cache. Called at startup and on unknown kid."""
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(self._url)
             resp.raise_for_status()
@@ -17,11 +20,13 @@ class JWKSClient:
         logger.info(f"JWKS loaded | kids={list(self._keys)}")
 
     async def get_key(self, kid: str) -> dict | None:
+        # Re-fetches if kid unknown — handles key rotation without restart.
         if kid not in self._keys:
             await self.fetch()
         return self._keys.get(kid)
 
     def decode(self, token: str) -> dict:
+        """Verifies JWT signature using cached public key. Raises JWTError if kid unknown or signature invalid."""
         header = jwt.get_unverified_header(token)
         kid = header.get("kid")
         alg = header.get("alg", "ES256")

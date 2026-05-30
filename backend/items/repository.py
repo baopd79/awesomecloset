@@ -14,6 +14,8 @@ from backend.items.models import (
 
 
 class ItemRepository:
+    """All DB queries for clothing_items. All user-facing methods are scoped by user_id."""
+
     def __init__(self, session: AsyncSession):
         self._session = session
 

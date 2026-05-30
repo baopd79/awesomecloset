@@ -10,6 +10,7 @@ from sqlmodel import Field, SQLModel
 
 
 def _utcnow() -> datetime:
+    # Must return timezone-aware datetime — DB column is TIMESTAMPTZ.
     return datetime.now(UTC)
 
 
@@ -65,6 +66,8 @@ class ProcessingStatus(str, Enum):
 
 
 class ClothingItem(SQLModel, table=True):
+    """Core entity. FK constraints and RLS enforced by DB migration, not SQLAlchemy."""
+
     __tablename__ = "clothing_items"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

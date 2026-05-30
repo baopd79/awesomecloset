@@ -7,6 +7,7 @@ from backend.workers.tasks import process_item
 
 
 def get_redis_settings() -> RedisSettings:
+    # Parses REDIS_URL env var into ARQ RedisSettings.
     parsed = urlparse(settings.redis_url)
     return RedisSettings(
         host=parsed.hostname or "localhost",
@@ -17,6 +18,8 @@ def get_redis_settings() -> RedisSettings:
 
 
 class WorkerSettings:
+    """ARQ worker configuration. Run with: uv run arq backend.workers.main.WorkerSettings"""
+
     functions = [process_item]
     redis_settings = get_redis_settings()
     max_jobs = 10

@@ -37,6 +37,7 @@ class ItemResponse(BaseModel):
 
 
 class TagsUpdateRequest(BaseModel):
+    # All fields optional — supports partial update via PATCH.
     type: ClothingType | None = None
     style: list[ClothingStyle] | None = None
     season: list[ClothingSeason] | None = None

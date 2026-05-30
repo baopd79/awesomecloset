@@ -3,6 +3,7 @@ import time
 import uuid
 
 from fastapi import Request
+from jose import jwt
 from loguru import logger
 
 logger.remove()
@@ -14,23 +15,16 @@ logger.add(
 
 
 async def request_logging_middleware(request: Request, call_next):
+    """Logs method, path, status, user_id, and duration for every request."""
     request_id = str(uuid.uuid4())[:8]
     start = time.perf_counter()
 
+    # Extract user_id without verifying signature — log context only, not auth.
     user_id = "-"
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         try:
-            from jose import jwt
-
-            from backend.core.config import settings
-
-            payload = jwt.decode(
-                auth[7:],
-                settings.supabase_jwt_secret,
-                algorithms=["HS256"],
-                options={"verify_aud": False, "verify_exp": False},
-            )
+            payload = jwt.get_unverified_claims(auth[7:])
             user_id = payload.get("sub", "-")
         except Exception:
             pass
