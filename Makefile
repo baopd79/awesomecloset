@@ -6,7 +6,7 @@ dev:
 	uv run uvicorn backend.main:app --reload --port 8000 --loop asyncio
 
 worker:
-	uv run arq backend.workers.main.WorkerSettings
+	uv run arq backend.workers.main.WorkerSettings --verbose
 
 redis:
 	docker compose up -d redis
