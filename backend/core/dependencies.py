@@ -13,10 +13,12 @@ bearer = HTTPBearer()
 
 
 async def get_arq(request: Request) -> ArqRedis:
+    # Reads ArqRedis pool from app.state — initialized once in lifespan.
     return request.app.state.arq
 
 
 async def get_jwks(request: Request) -> JWKSClient:
+    # Reads JWKSClient from app.state — initialized and keys fetched at startup.
     return request.app.state.jwks
 
 
@@ -24,6 +26,7 @@ async def get_current_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(bearer),
     jwks: JWKSClient = Depends(get_jwks),
 ) -> str:
+    """Verifies ES256 JWT and returns user_id (sub claim). Raises 401 on invalid token."""
     try:
         payload = jwks.decode(credentials.credentials)
         user_id: str | None = payload.get("sub")

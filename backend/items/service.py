@@ -26,6 +26,8 @@ BUCKET = "closet-images"
 
 
 class ItemService:
+    """Business logic for clothing items. Owns transaction boundaries; enqueues jobs after commit."""
+
     def __init__(self, session: AsyncSession, repo: ItemRepository, storage: StorageClient, arq: ArqRedis):
         self._session = session
         self._repo = repo

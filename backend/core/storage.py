@@ -4,8 +4,13 @@ import httpx
 
 
 class StorageClient(ABC):
+    """Abstract interface for object storage — swap implementation without touching service layer."""
+
     @abstractmethod
     async def upload(self, bucket: str, path: str, content: bytes, content_type: str) -> str: ...
+
+    @abstractmethod
+    async def download(self, bucket: str, path: str) -> bytes: ...
 
     @abstractmethod
     async def get_signed_url(self, bucket: str, path: str, expires_in: int = 3600) -> str: ...
@@ -15,6 +20,8 @@ class StorageClient(ABC):
 
 
 class SupabaseStorageClient(StorageClient):
+    """Supabase Storage REST API implementation. Uses service role key for server-side access."""
+
     def __init__(self, supabase_url: str, service_role_key: str):
         self._base = f"{supabase_url}/storage/v1"
         self._headers = {
@@ -31,6 +38,15 @@ class SupabaseStorageClient(StorageClient):
             )
             resp.raise_for_status()
         return f"{bucket}/{path}"
+
+    async def download(self, bucket: str, path: str) -> bytes:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{self._base}/object/{bucket}/{path}",
+                headers=self._headers,
+            )
+            resp.raise_for_status()
+            return resp.content
 
     async def get_signed_url(self, bucket: str, path: str, expires_in: int = 3600) -> str:
         async with httpx.AsyncClient() as client:
