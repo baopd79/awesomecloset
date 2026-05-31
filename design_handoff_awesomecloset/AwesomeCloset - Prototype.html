@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AwesomeCloset — Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Be+Vietnam+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body { background: #E7E2D8; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: "Be Vietnam Pro", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  * { box-sizing: border-box; }
+  input, button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes slideIn { from { transform: translateX(34px); } to { transform: translateX(0); } }
+  @keyframes fadeIn { from { transform: translateY(7px); } to { transform: translateY(0); } }
+  @keyframes popIn { from { transform: scale(0.97); } to { transform: scale(1); } }
+  .om-stage { transform-origin: center center; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="garments.jsx"></script>
+<script type="text/babel" src="app-core.jsx"></script>
+<script type="text/babel" src="app-extras.jsx"></script>
+<script type="text/babel" src="app-home.jsx"></script>
+<script type="text/babel" src="app-closet.jsx"></script>
+<script type="text/babel" src="app-add.jsx"></script>
+<script type="text/babel" src="app-outfit.jsx"></script>
+<script type="text/babel" src="app-analytics.jsx"></script>
+<script type="text/babel" src="app-profile.jsx"></script>
+<script type="text/babel" src="app-settings.jsx"></script>
+<script type="text/babel" src="app-auth.jsx"></script>
+<script type="text/babel" src="app-onboarding.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// Thèm thiết kế đã chốt — người dùng vẫn đổi được qua màn "Tùy chỉnh giao diện"
+const THEME_DEFAULTS = {
+  "accent": "#A2543B",
+  "paper": "Trung tính",
+  "corners": "Mềm",
+  "serifHeads": true
+};
+
+const PAPER_KEY = { 'Ấm': 'warm', 'Trung tính': 'neutral', 'Sáng': 'bright' };
+const CORNER_KEY = { 'Mềm': 'soft', 'Vừa': 'medium', 'Sắc': 'sharp' };
+
+// ── bottom tab bar ──────────────────────────────────────────────────
+function TabBar({ nav }) {
+  const items = [['home', 'Hôm nay', 'home'], ['closet', 'Tủ đồ', 'closet']];
+  const right = [['analytics', 'Thống kê', 'chart']];
+  const Tab = ([key, label, icon]) => {
+    const on = nav.tab === key && nav.stack.length === 0;
+    return (
+      <button key={key} onClick={() => nav.setTab(key)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
+        <Icon name={icon} size={23} color={on ? TOK.ink : '#B3ACA0'} sw={on ? 2 : 1.7} />
+        <span style={{ fontFamily: TOK.sans, fontSize: 10, fontWeight: 600, color: on ? TOK.ink : '#B3ACA0' }}>{label}</span>
+      </button>
+    );
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', padding: '12px 22px 30px', background: TOK.surface, borderTop: `1px solid ${TOK.line}`, position: 'relative', zIndex: 30 }}>
+      {items.map(Tab)}
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+        <button onClick={() => nav.setTab('add')} style={{ width: 54, height: 54, borderRadius: 999, border: 'none', cursor: 'pointer', background: TOK.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 20px rgba(120,70,45,0.35)', marginTop: -30 }}>
+          <Icon name="plus" size={24} color="#FBF8F2" sw={2.2} />
+        </button>
+      </div>
+      {right.map(Tab)}
+    </div>
+  );
+}
+
+function App() {
+  const [t, setThemeState] = useState(THEME_DEFAULTS);
+  const setTweak = (k, v) => setThemeState(s => ({ ...s, [k]: v }));
+
+  // navigation
+  const [tab, setTab] = useState('home');
+  const [stack, setStack] = useState([]);
+  const [authed, setAuthed] = useState(false);
+  const [onboarding, setOnboarding] = useState(false);
+
+  // store state
+  const [closet, setCloset] = useState(CLOSET);
+  const [saved, setSaved] = useState([]);
+  const [bonus, setBonus] = useState(0);
+  const [toastMsg, setToastMsg] = useState('');
+  const toastTimer = useRef(null);
+
+  const toast = useCallback((m) => {
+    setToastMsg(m); clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToastMsg(''), 2200);
+  }, []);
+
+  const nav = {
+    tab, stack,
+    navigate: (screen, params) => setStack(s => [...s, { screen, params }]),
+    goBack: () => setStack(s => s.slice(0, -1)),
+    setTab: (tb) => { setStack([]); setTab(tb); },
+  };
+
+  const baseReady = closet.filter(c => !c.archived).length;
+  const store = {
+    closet: closet.filter(c => !c.archived),
+    archivedItems: closet.filter(c => c.archived),
+    readyCount: baseReady + bonus,
+    savedOutfits: saved,
+    archivedCount: closet.filter(c => c.archived).length,
+    archive: (id) => setCloset(cs => cs.map(c => c.id === id ? { ...c, archived: true } : c)),
+    restore: (id) => setCloset(cs => cs.map(c => c.id === id ? { ...c, archived: false } : c)),
+    save: (o) => { setSaved(s => s.includes(o.id) ? s.filter(x => x !== o.id) : [...s, o.id]); toast(saved.includes(o.id) ? 'Đã bỏ lưu' : 'Đã lưu outfit'); },
+    isSaved: (id) => saved.includes(id),
+    wear: (o) => { toast('Đã ghi vào nhật ký mặc ✓'); setStack([]); setTab('home'); },
+    onProcessed: () => setBonus(b => b + 1),
+    logout: () => { setAuthed(false); setOnboarding(false); setStack([]); setTab('home'); },
+    theme: { accent: t.accent, paper: t.paper, corners: t.corners, serifHeads: t.serifHeads },
+    setTheme: setTweak,
+    toast,
+  };
+
+  // current screen
+  const top = stack[stack.length - 1];
+  const screenName = top ? top.screen : tab;
+  const isPushed = !!top;
+  const showTabBar = !isPushed;
+
+  const renderScreen = () => {
+    if (top) {
+      if (top.screen === 'item') return <ItemScreen params={top.params} />;
+      if (top.screen === 'outfit') return <OutfitScreen params={top.params} />;
+      if (top.screen === 'suggest') return <SuggestScreen />;
+      if (top.screen === 'profile') return <ProfileScreen />;
+      if (top.screen === 'saved') return <SavedScreen />;
+      if (top.screen === 'archive') return <ArchiveScreen />;
+      if (top.screen === 'appearance') return <AppearanceScreen />;
+    }
+    if (tab === 'home') return <HomeScreen />;
+    if (tab === 'closet') return <ClosetScreen />;
+    if (tab === 'add') return <AddScreen />;
+    if (tab === 'analytics') return <AnalyticsScreen />;
+    return null;
+  };
+
+  const vars = buildVars({ accent: t.accent, paper: PAPER_KEY[t.paper] || 'warm', corners: CORNER_KEY[t.corners] || 'soft', serifHeads: t.serifHeads });
+
+  return (
+    <div style={{ ...vars, background: TOK.bg }}>
+      <IOSDevice width={390} height={844}>
+        <NavCtx.Provider value={nav}>
+          <StoreCtx.Provider value={store}>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', background: TOK.bg }}>
+              {!authed
+                ? <div style={{ flex: 1, minHeight: 0 }}><AuthFlow onAuthed={(isNew) => { setAuthed(true); setOnboarding(isNew); }} /></div>
+                : onboarding
+                ? <div style={{ flex: 1, minHeight: 0 }}><Onboarding onDone={() => setOnboarding(false)} /></div>
+                : <>
+                    <div key={screenName + ':' + stack.length} style={{ flex: 1, minHeight: 0, overflowY: 'auto', animation: isPushed ? 'slideIn .3s cubic-bezier(.2,.8,.2,1)' : 'fadeIn .25s ease' }}>
+                      {renderScreen()}
+                    </div>
+                    {showTabBar && <TabBar nav={nav} />}
+                  </>}
+              <Toast msg={toastMsg} />
+            </div>
+          </StoreCtx.Provider>
+        </NavCtx.Provider>
+      </IOSDevice>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

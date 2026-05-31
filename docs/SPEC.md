@@ -550,3 +550,14 @@ Chi tiết conventions, patterns, và rules: xem [`docs/backend-conventions.md`]
 - [ ] Play Store internal testing (Android)
 - [ ] App Store assets: icon, screenshots, description
 - [ ] Privacy policy (ảnh cá nhân, account deletion)
+
+
+## UI/UX Direction
+
+AwesomeCloset should feel like a clean, modern fashion lifestyle app, not an admin dashboard. The interface is image-first: clothing photos, outfit collages, and daily suggestions are the main visual focus.
+
+
+
+Use a soft neutral color palette, large rounded clothing cards, subtle shadows, clean typography, smooth transitions, haptic feedback, and optional subtle sound effects. The UX should make the core loop feel effortless: capture clothes, wait for AI processing, browse closet, receive outfit suggestions, and save/wear outfits.
+Avoid clutter, dense tables, too many colors, complex dashboards, and over-animated effects.
+For detailed design system, screen layout, motion, haptic, sound, and component guidelines, see `DESIGN.md`.
