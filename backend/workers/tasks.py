@@ -69,10 +69,22 @@ async def _run_pipeline(ctx: dict, session: AsyncSession, item_id: UUID) -> None
         item.thumbnail_url = thumbnail_path
         await repo.update_status(item, ProcessingStatus.tagging)
 
-    # Task 8: Gemini Vision tagging pipeline will go here
-    logger.info(f"bg removal done, tagging skipped (Task 8) | item_id={item_id}")
+    # --- Step 2: Gemini tagging ---
+    try:
+        thumbnail_bytes = await storage.download(BUCKET, item.thumbnail_url)
+        tags = await ctx["gemini_client"].tag_image(thumbnail_bytes)
+    except Exception as exc:
+        logger.error(f"tagging failed | item_id={item_id} error={exc}")
+        async with transaction(session):
+            await repo.update_status(item, ProcessingStatus.failed, error=str(exc))
+        raise
 
     async with transaction(session):
+        item.type = tags.type
+        item.colors = [c.model_dump() for c in tags.colors]
+        item.style = tags.style
+        item.season = tags.season
+        item.occasion = tags.occasion
         await repo.update_status(item, ProcessingStatus.ready)
 
     logger.info(f"process_item complete | item_id={item_id}")

@@ -116,15 +116,29 @@ def test_make_thumbnail_composites_alpha_on_white():
 
 
 def _make_ctx(bg_client=None, fallback_client=None):
+    from backend.items.models import ClothingOccasion, ClothingSeason, ClothingStyle, ClothingType
+    from backend.workers.ai_pipeline import ColorEntry, TaggingResult
+
     storage = MagicMock()
     storage.download = AsyncMock(return_value=_make_jpeg_bytes())
     storage.upload = AsyncMock()
+
+    mock_tags = TaggingResult(
+        type=ClothingType.t_shirt,
+        colors=[ColorEntry(hex="#FFFFFF", name="white")],
+        style=[ClothingStyle.casual],
+        season=[ClothingSeason.all_season],
+        occasion=[ClothingOccasion.casual],
+    )
+    gemini_client = MagicMock()
+    gemini_client.tag_image = AsyncMock(return_value=mock_tags)
 
     return {
         "job_id": "test-job",
         "bg_client": bg_client or MagicMock(remove=AsyncMock(return_value=_make_png())),
         "fallback_client": fallback_client,
         "storage": storage,
+        "gemini_client": gemini_client,
     }
 
 
