@@ -10,6 +10,7 @@ from backend.core.config import settings
 from backend.core.storage import SupabaseStorageClient
 from backend.items.repository import ItemRepository
 from backend.items.service import _job_id
+from backend.workers.ai_pipeline import GeminiFlashClient
 from backend.workers.bg_removal import RembgClient, RemoveBgApiClient
 from backend.workers.tasks import process_item
 
@@ -50,6 +51,10 @@ async def startup(ctx: dict) -> None:
         RemoveBgApiClient(settings.removebg_api_key) if settings.removebg_api_key else None
     )
 
+    ctx["gemini_client"] = GeminiFlashClient(
+        api_key=settings.gemini_api_key,
+        model=settings.gemini_tagging_model,
+    )
     ctx["arq"] = await create_pool(get_redis_settings())
     await _recover_orphaned(ctx)
 
