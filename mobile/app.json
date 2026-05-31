@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "AwesomeCloset",
+    "slug": "awesomecloset",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "awesomecloset",
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Allow AwesomeCloset to use Face ID to secure your account."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.awesomecloset.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#F3F2EF",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "package": "com.awesomecloset.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
