@@ -6,7 +6,7 @@ dev:
 	uv run uvicorn backend.main:app --reload --port 8000 --loop asyncio
 
 worker:
-	uv run arq backend.workers.main.WorkerSettings
+	uv run arq backend.workers.main.WorkerSettings --verbose
 
 redis:
 	docker compose up -d redis
@@ -24,10 +24,14 @@ test-int:
 
 # ── Lint & Format ─────────────────────────────────────────────────────────────
 
-lint:
+lint-check:
 	uv run ruff check .
+lint-fix:
+	uv run ruff check . --fix
 
-fmt:
+fmt-check:
+	uv run ruff format --check .
+fmt-fix:
 	uv run ruff format .
 
 check:

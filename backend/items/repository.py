@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlmodel import select
@@ -12,6 +13,13 @@ from backend.items.models import (
     _utcnow,
 )
 
+_ORPHAN_STATUSES = [
+    ProcessingStatus.pending,
+    ProcessingStatus.removing_bg,
+    ProcessingStatus.tagging,
+]
+_ORPHAN_THRESHOLD_MINUTES = 10
+
 
 class ItemRepository:
     """All DB queries for clothing_items. All user-facing methods are scoped by user_id."""
@@ -24,6 +32,26 @@ class ItemRepository:
         await self._session.flush()
         await self._session.refresh(item)
         return item
+
+    async def list_orphaned(self) -> list[ClothingItem]:
+        """Items stuck in a processing state for >{threshold}min — no active job in queue."""
+        cutoff = datetime.now(UTC) - timedelta(minutes=_ORPHAN_THRESHOLD_MINUTES)
+        stmt = select(ClothingItem).where(
+            ClothingItem.processing_status.in_(_ORPHAN_STATUSES),
+            ClothingItem.updated_at < cutoff,
+            ClothingItem.deleted_at.is_(None),
+        )
+        result = await self._session.exec(stmt)
+        return list(result.all())
+
+    async def get_by_id_system(self, item_id: UUID) -> ClothingItem | None:
+        """Fetch by item_id only, no user_id scope — for worker/background use."""
+        stmt = select(ClothingItem).where(
+            ClothingItem.id == item_id,
+            ClothingItem.deleted_at.is_(None),
+        )
+        result = await self._session.exec(stmt)
+        return result.first()
 
     async def get_by_id(self, item_id: UUID, user_id: UUID) -> ClothingItem | None:
         stmt = select(ClothingItem).where(
