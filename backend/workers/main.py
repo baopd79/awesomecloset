@@ -10,7 +10,7 @@ from backend.core.config import settings
 from backend.core.storage import SupabaseStorageClient
 from backend.items.repository import ItemRepository
 from backend.items.service import _job_id
-from backend.workers.bg_removal import RemoveBgApiClient, RembgClient
+from backend.workers.bg_removal import RembgClient, RemoveBgApiClient
 from backend.workers.tasks import process_item
 
 
@@ -38,13 +38,17 @@ async def startup(ctx: dict) -> None:
     )
     ctx["engine"] = engine
     ctx["session_factory"] = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    ctx["storage"] = SupabaseStorageClient(settings.supabase_url, settings.supabase_service_role_key)
+    ctx["storage"] = SupabaseStorageClient(
+        settings.supabase_url, settings.supabase_service_role_key
+    )
     # Load rembg model once — expensive, avoid per-job. Downloads ~170MB on first run.
     logger.info("rembg: loading u2net model (first run may take a few minutes)...")
     rembg_session = await asyncio.to_thread(rembg.new_session, "u2net")
     logger.info("rembg: model ready")
     ctx["bg_client"] = RembgClient(rembg_session)
-    ctx["fallback_client"] = RemoveBgApiClient(settings.removebg_api_key) if settings.removebg_api_key else None
+    ctx["fallback_client"] = (
+        RemoveBgApiClient(settings.removebg_api_key) if settings.removebg_api_key else None
+    )
 
     ctx["arq"] = await create_pool(get_redis_settings())
     await _recover_orphaned(ctx)

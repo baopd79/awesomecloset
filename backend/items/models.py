@@ -132,7 +132,9 @@ class ClothingItem(SQLModel, table=True):
     )
     updated_at: datetime = Field(
         default_factory=_utcnow,
-        sa_column=Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False),
+        sa_column=Column(
+            DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+        ),
     )
     archived_at: datetime | None = Field(
         default=None,

@@ -13,7 +13,11 @@ from backend.items.models import (
     _utcnow,
 )
 
-_ORPHAN_STATUSES = [ProcessingStatus.pending, ProcessingStatus.removing_bg, ProcessingStatus.tagging]
+_ORPHAN_STATUSES = [
+    ProcessingStatus.pending,
+    ProcessingStatus.removing_bg,
+    ProcessingStatus.tagging,
+]
 _ORPHAN_THRESHOLD_MINUTES = 10
 
 

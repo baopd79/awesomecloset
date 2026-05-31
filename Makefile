@@ -24,10 +24,14 @@ test-int:
 
 # ── Lint & Format ─────────────────────────────────────────────────────────────
 
-lint:
+lint-check:
 	uv run ruff check .
+lint-fix:
+	uv run ruff check . --fix
 
-fmt:
+fmt-check:
+	uv run ruff format --check .
+fmt-fix:
 	uv run ruff format .
 
 check:

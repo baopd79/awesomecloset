@@ -6,11 +6,11 @@ import pytest
 from PIL import Image
 
 from backend.items.models import ClothingItem, ProcessingStatus
-from backend.workers.bg_removal import RemoveBgApiClient, RembgClient
+from backend.workers.bg_removal import RembgClient, RemoveBgApiClient
 from backend.workers.tasks import _derive_path, _make_thumbnail, _run_pipeline
 
-
 # --- helpers ---
+
 
 def _make_png(width: int = 100, height: int = 100) -> bytes:
     img = Image.new("RGBA", (width, height), (255, 0, 0, 128))
@@ -39,6 +39,7 @@ def _make_item(user_id=None, item_id=None) -> ClothingItem:
 
 # --- BackgroundRemovalClient ---
 
+
 @pytest.mark.asyncio
 async def test_rembg_client_calls_rembg_remove():
     session = MagicMock()
@@ -46,7 +47,9 @@ async def test_rembg_client_calls_rembg_remove():
     image_bytes = _make_jpeg_bytes()
     result_bytes = _make_png()
 
-    with patch("backend.workers.bg_removal.asyncio.to_thread", new=AsyncMock(return_value=result_bytes)) as mock_thread:
+    with patch(
+        "backend.workers.bg_removal.asyncio.to_thread", new=AsyncMock(return_value=result_bytes)
+    ) as mock_thread:
         result = await client.remove(image_bytes)
 
     mock_thread.assert_awaited_once()
@@ -55,8 +58,6 @@ async def test_rembg_client_calls_rembg_remove():
 
 @pytest.mark.asyncio
 async def test_removebg_api_client_posts_to_api():
-    import httpx
-
     api_key = "test-key"
     result_bytes = _make_png()
 
@@ -81,6 +82,7 @@ async def test_removebg_api_client_posts_to_api():
 
 # --- _derive_path ---
 
+
 def test_derive_path():
     original = "abc/def/original.jpg"
     assert _derive_path(original, "processed.png") == "abc/def/processed.png"
@@ -88,6 +90,7 @@ def test_derive_path():
 
 
 # --- _make_thumbnail ---
+
 
 def test_make_thumbnail_returns_jpeg():
     png_bytes = _make_png(500, 500)
@@ -111,8 +114,8 @@ def test_make_thumbnail_composites_alpha_on_white():
 
 # --- _run_pipeline ---
 
+
 def _make_ctx(bg_client=None, fallback_client=None):
-    session_factory = MagicMock()
     storage = MagicMock()
     storage.download = AsyncMock(return_value=_make_jpeg_bytes())
     storage.upload = AsyncMock()

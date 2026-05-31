@@ -35,6 +35,7 @@ async def repo(db_session) -> ItemRepository:
 
 # --- create + get ---
 
+
 @pytest.mark.asyncio
 async def test_create_and_get_item(repo, db_session, test_user_id):
     item = ClothingItem(user_id=test_user_id, processing_status=ProcessingStatus.pending)
@@ -60,6 +61,7 @@ async def test_get_item_wrong_user_returns_none(repo, db_session, test_user_id):
 
 # --- list ---
 
+
 @pytest.mark.asyncio
 async def test_list_items_excludes_deleted(repo, db_session, test_user_id):
     item1 = ClothingItem(user_id=test_user_id, processing_status=ProcessingStatus.ready)
@@ -79,8 +81,12 @@ async def test_list_items_excludes_deleted(repo, db_session, test_user_id):
 
 @pytest.mark.asyncio
 async def test_list_items_filter_by_type(repo, db_session, test_user_id):
-    shirt = ClothingItem(user_id=test_user_id, type=ClothingType.shirt, processing_status=ProcessingStatus.ready)
-    pants = ClothingItem(user_id=test_user_id, type=ClothingType.pants, processing_status=ProcessingStatus.ready)
+    shirt = ClothingItem(
+        user_id=test_user_id, type=ClothingType.shirt, processing_status=ProcessingStatus.ready
+    )
+    pants = ClothingItem(
+        user_id=test_user_id, type=ClothingType.pants, processing_status=ProcessingStatus.ready
+    )
     async with transaction(db_session):
         await repo.create(shirt)
         await repo.create(pants)
@@ -115,6 +121,7 @@ async def test_list_items_isolated_by_user(repo, db_session, test_user_id):
 
 # --- update / soft delete / status ---
 
+
 @pytest.mark.asyncio
 async def test_soft_delete_hides_item_from_list(repo, db_session, test_user_id):
     item = ClothingItem(user_id=test_user_id, processing_status=ProcessingStatus.ready)
@@ -144,6 +151,7 @@ async def test_update_status(repo, db_session, test_user_id):
 
 
 # --- service-level retry guard ---
+
 
 @pytest.mark.asyncio
 async def test_service_retry_requires_failed_status(repo, db_session, test_user_id):

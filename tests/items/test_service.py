@@ -44,6 +44,7 @@ def _make_service(session=None, repo=None, storage=None, arq=None) -> ItemServic
 
 # --- upload_item ---
 
+
 @pytest.mark.asyncio
 async def test_upload_item_creates_record_and_enqueues_job():
     user_id = uuid.uuid4()
@@ -73,7 +74,9 @@ async def test_upload_item_creates_record_and_enqueues_job():
 
     storage.upload.assert_awaited_once()
     repo.create.assert_awaited_once()
-    arq.enqueue_job.assert_awaited_once_with("process_item", str(stored_item.id), _job_id=f"process_item:{stored_item.id}")
+    arq.enqueue_job.assert_awaited_once_with(
+        "process_item", str(stored_item.id), _job_id=f"process_item:{stored_item.id}"
+    )
     assert result.processing_status == ProcessingStatus.pending
 
 
@@ -104,6 +107,7 @@ async def test_upload_item_rejects_non_image():
 
 # --- list_items ---
 
+
 @pytest.mark.asyncio
 async def test_list_items_delegates_to_repo():
     user_id = uuid.uuid4()
@@ -114,11 +118,14 @@ async def test_list_items_delegates_to_repo():
     svc = _make_service(repo=repo)
 
     result = await svc.list_items(user_id)
-    repo.list_items.assert_awaited_once_with(user_id, type=None, occasion=None, season=None, is_archived=None)
+    repo.list_items.assert_awaited_once_with(
+        user_id, type=None, occasion=None, season=None, is_archived=None
+    )
     assert result == expected
 
 
 # --- get_item ---
+
 
 @pytest.mark.asyncio
 async def test_get_item_returns_item():
@@ -149,6 +156,7 @@ async def test_get_item_not_found_raises_404():
 
 # --- update_tags ---
 
+
 @pytest.mark.asyncio
 async def test_update_tags_applies_changes():
     user_id = uuid.uuid4()
@@ -170,6 +178,7 @@ async def test_update_tags_applies_changes():
 
 # --- delete_item ---
 
+
 @pytest.mark.asyncio
 async def test_delete_item_calls_soft_delete():
     user_id = uuid.uuid4()
@@ -186,6 +195,7 @@ async def test_delete_item_calls_soft_delete():
 
 
 # --- retry_processing ---
+
 
 @pytest.mark.asyncio
 async def test_retry_processing_requeues_failed_item():
@@ -204,7 +214,9 @@ async def test_retry_processing_requeues_failed_item():
     await svc.retry_processing(item_id, user_id)
 
     repo.update_status.assert_awaited_once_with(item, ProcessingStatus.pending, error=None)
-    arq.enqueue_job.assert_awaited_once_with("process_item", str(item_id), _job_id=f"process_item:{item_id}")
+    arq.enqueue_job.assert_awaited_once_with(
+        "process_item", str(item_id), _job_id=f"process_item:{item_id}"
+    )
 
 
 @pytest.mark.asyncio
@@ -225,6 +237,7 @@ async def test_retry_processing_rejects_non_failed_item():
 
 
 # --- TagsUpdateRequest validation ---
+
 
 def test_custom_tags_valid():
     body = TagsUpdateRequest(custom_tags=["vintage", "summer"])

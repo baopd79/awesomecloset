@@ -58,12 +58,14 @@ async def _run_migrations(db_url: str) -> None:
     try:
         async with engine.begin() as conn:
             await conn.execute(text("CREATE SCHEMA IF NOT EXISTS auth"))
-            await conn.execute(text("""
+            await conn.execute(
+                text("""
                 CREATE TABLE IF NOT EXISTS auth.users (
                     id    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     email text
                 )
-            """))
+            """)
+            )
         for sql_file in sorted(_MIGRATIONS_DIR.glob("0*.sql")):
             if sql_file.name in _SKIP_MIGRATIONS:
                 continue
