@@ -4,9 +4,211 @@ Tài liệu này dành cho developer lần đầu làm việc với React Native
 
 ---
 
-## 1. Luồng triển khai React Native / Expo
+## 1. Luồng triển khai từ tạo project đến code chạy được
 
-Hiểu flow này giúp debug nhanh hơn khi có vấn đề.
+### Bước 1 — Tạo project Expo
+
+```bash
+npx create-expo-app mobile --template blank-typescript
+cd mobile
+```
+
+Lệnh này tạo project bare-minimum. Project này dùng thêm Expo Router nên cần config thêm:
+
+```bash
+npx expo install expo-router react-native-safe-area-context react-native-screens
+```
+
+`app.json` khai báo entry point là Expo Router:
+```json
+{
+  "expo": {
+    "scheme": "awesomecloset",
+    "web": { "bundler": "metro" }
+  }
+}
+```
+
+`package.json` set main:
+```json
+{ "main": "expo-router/entry" }
+```
+
+Từ đây Expo Router tự tìm `app/` folder làm root của routing.
+
+---
+
+### Bước 2 — Cài thêm dependencies
+
+Luôn dùng `npx expo install` thay vì `npm install` để Expo chọn version tương thích với SDK:
+
+```bash
+npx expo install @supabase/supabase-js @react-native-async-storage/async-storage
+npx expo install expo-font expo-splash-screen expo-secure-store
+npx expo install react-native-gesture-handler react-native-reanimated
+npx expo install expo-image-picker expo-file-system
+```
+
+Mỗi package trong Expo có version ghim với SDK (ví dụ SDK 56 → `expo-image-picker@~56.0.15`). `npx expo install` tự xử lý việc này.
+
+---
+
+### Bước 3 — Tạo cấu trúc thư mục
+
+Project này tổ chức theo quy ước:
+
+```
+mobile/
+  app/            # routes — Expo Router đọc folder này
+  components/
+    ui/           # design system components dùng lại
+  hooks/          # custom React hooks
+  lib/            # clients và utilities (supabase, theme, api)
+  assets/         # fonts, images
+```
+
+Tạo từng folder, sau đó thêm file vào đúng chỗ theo quy tắc dưới đây.
+
+---
+
+### Bước 4 — Setup design system
+
+**4a. Theme** (`lib/theme.ts`) — định nghĩa toàn bộ tokens:
+
+```typescript
+export const T = resolveTheme(DEFAULT_THEME);
+// T.ink, T.accent, T.surface, T.r, T.rsm, ...
+```
+
+Tất cả màu/radius đều lấy từ `T`. Không hardcode hex string trong component.
+
+**4b. Fonts** — khai báo trong root layout `app/_layout.tsx`:
+
+```typescript
+const [fontsLoaded] = useFonts({
+  PlayfairDisplay_700Bold,
+  BeVietnamPro_400Regular,
+  BeVietnamPro_600SemiBold,
+});
+// render null cho đến khi fontsLoaded === true
+```
+
+Font phải load xong trước khi render bất kỳ Text nào dùng custom font — nếu không app crash.
+
+**4c. UI components** (`components/ui/`) — các primitive tái sử dụng:
+
+```
+Icon.tsx        # SVG icons (không dùng thư viện ngoài)
+PrimaryBtn.tsx  # nút chính
+GhostBtn.tsx    # nút outline
+Kicker.tsx      # label nhỏ trên heading
+```
+
+Viết component mới ở đây khi cần primitive dùng nhiều hơn 2 màn hình.
+
+---
+
+### Bước 5 — Setup routing
+
+**5a. Root layout** (`app/_layout.tsx`) — xử lý auth guard và font:
+
+```
+Mở app
+  → load fonts + check session song song
+  → nếu chưa xong: render null (splash screen vẫn hiện)
+  → xong:
+      không có session      → redirect /(auth)
+      có session, chưa onboard → redirect /(onboarding)
+      có session, đã onboard   → redirect /(tabs)
+```
+
+**5b. Route groups** — tạo folder với tên `(group)`:
+
+```
+app/(auth)/index.tsx        → màn hình login/register
+app/(onboarding)/index.tsx  → màn hình onboarding
+app/(tabs)/_layout.tsx      → tab bar
+app/(tabs)/index.tsx        → tab "Hôm nay"
+```
+
+Group không xuất hiện trong URL — chỉ để tổ chức layout.
+
+**5c. Thêm màn hình mới** — tạo file trong đúng group:
+
+```bash
+# muốn thêm màn hình chi tiết item
+touch app/item/[id].tsx
+```
+
+Expo Router tự detect file mới khi Metro đang chạy — không cần config gì thêm.
+
+---
+
+### Bước 6 — Kết nối Supabase
+
+**6a. Client** (`lib/supabase.ts`):
+
+```typescript
+export const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+  { auth: { storage: AsyncStorage } },  // persist session trên device
+);
+```
+
+Env vars phải có prefix `EXPO_PUBLIC_` để Metro expose vào JS bundle.
+
+**6b. Auth hook** (`hooks/useSession.ts`) — subscribe auth state changes:
+
+```typescript
+supabase.auth.onAuthStateChange((_event, session) => {
+  setSession(session);
+});
+```
+
+Dùng `useSession()` trong bất kỳ component nào cần user info.
+
+---
+
+### Bước 7 — Kết nối backend API
+
+Toàn bộ HTTP calls tập trung trong `lib/api.ts`:
+
+```
+lib/api.ts
+  ├── types (ItemResponse, ProcessingStatus, ...)
+  ├── getToken()          ← lấy JWT từ supabase session
+  ├── uploadItem()        ← dùng expo-file-system/legacy
+  └── retryItem()         ← dùng fetch thường
+```
+
+Quy tắc: **không gọi fetch trực tiếp trong component/screen** — luôn qua `lib/api.ts`.
+
+---
+
+### Bước 8 — Thêm tính năng mới (pattern chuẩn)
+
+Khi implement 1 feature (ví dụ upload queue):
+
+```
+1. lib/api.ts          → thêm hàm gọi API
+2. hooks/use*.ts       → thêm hook nếu có logic phức tạp / realtime
+3. components/*.tsx    → thêm component con
+4. app/(tabs)/*.tsx    → thêm/sửa màn hình
+```
+
+Luồng dữ liệu luôn đi một chiều:
+
+```
+Screen (state) → Component (display) → Hook (side effects) → API/Supabase
+     ↑_________________________callback______________________↓
+```
+
+---
+
+## 2. Lý thuyết nền tảng — React Native / Expo
+
+Hiểu phần này giúp debug nhanh hơn khi có vấn đề.
 
 ### Tổng quan kiến trúc
 
