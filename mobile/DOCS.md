@@ -319,7 +319,209 @@ npx expo run:ios --device    # build dev client lần đầu (~10 phút)
 
 ---
 
-## 10. Các lỗi hay gặp
+## 10. Luồng viết code mobile từ đầu đến xong
+
+### Bước 0 — Tạo branch
+
+```bash
+git checkout -b feat/<task-id>-<slug>
+# ví dụ: feat/7-mobile-upload
+```
+
+Luôn làm bước này **trước** khi chạy bất kỳ lệnh install hay sửa file nào.
+
+---
+
+### Bước 1 — Đọc nguồn chân lý
+
+Mỗi task UI đều có prototype trong `design_handoff_awesomecloset/`:
+
+```
+design_handoff_awesomecloset/
+  README.md           # bảng màu, typography, spacing, UX rules
+  app-<feature>.jsx   # prototype màn hình cụ thể
+```
+
+Đọc `README.md` để lấy token names, đọc `app-<feature>.jsx` để hiểu layout, text tiếng Việt, và UX intent. Đây là **nguồn duy nhất để quyết định UI** — không tự sáng tác.
+
+---
+
+### Bước 2 — Đọc API contract
+
+Trước khi viết bất kỳ dòng fetch nào, đọc backend:
+
+```bash
+backend/items/router.py    # endpoints, HTTP method, status codes
+backend/items/schemas.py   # request/response types
+backend/items/models.py    # __tablename__ (dùng cho Realtime)
+```
+
+Mapping từ backend sang TypeScript interface trong `lib/api.ts`.
+
+---
+
+### Bước 3 — Cài deps nếu cần
+
+```bash
+npx expo install <package>   # dùng expo install, không dùng npm install
+# ví dụ:
+npx expo install expo-image-picker
+```
+
+`npx expo install` chọn version tương thích với SDK hiện tại tự động.
+
+---
+
+### Bước 4 — Build bottom-up
+
+Thứ tự implement: **nhỏ nhất trước, màn hình sau**.
+
+```
+1. Component con độc lập   (ví dụ: ItemProcessingCard)
+2. Hook nếu cần            (ví dụ: useRealtimeItem)
+3. Màn hình (screen)       (ví dụ: add.tsx)
+```
+
+**Template 1 component:**
+
+```typescript
+// components/MyCard.tsx
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { T } from '@/lib/theme';
+
+interface Props {
+  title: string;
+}
+
+export function MyCard({ title }: Props) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.title}>{title}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: T.surface,
+    borderRadius: T.rsm,
+    padding: 16,
+  },
+  title: {
+    fontFamily: 'BeVietnamPro_600SemiBold',
+    fontSize: 14,
+    color: T.ink,
+  },
+});
+```
+
+**Template 1 màn hình:**
+
+```typescript
+// app/(tabs)/my-screen.tsx
+import React from 'react';
+import { ScrollView, StyleSheet, Text } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Kicker } from '@/components/ui/Kicker';
+import { T } from '@/lib/theme';
+
+export default function MyScreen() {
+  return (
+    <SafeAreaView style={styles.root} edges={['top']}>
+      <ScrollView>
+        <Kicker>Label nhỏ phía trên</Kicker>
+        <Text style={styles.title}>Tiêu đề màn hình</Text>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: T.bg },
+  title: {
+    fontFamily: 'PlayfairDisplay_700Bold',
+    fontSize: 34,
+    color: T.ink,
+    letterSpacing: -0.5,
+    marginTop: 6,
+  },
+});
+```
+
+---
+
+### Bước 5 — Dịch JSX prototype sang React Native
+
+Prototype dùng HTML/CSS — cần dịch sang RN:
+
+| JSX prototype | React Native |
+|---|---|
+| `<div style={{ display: 'flex' }}>` | `<View style={{ flexDirection: 'row' }}>` |
+| `<span>text</span>` | `<Text>text</Text>` |
+| `onClick` | `onPress` |
+| `<button>` | `<Pressable>` hoặc `<PrimaryBtn>` / `<GhostBtn>` |
+| `borderRadius: 'var(--radius-sm)'` | `borderRadius: T.rsm` |
+| `color: TOK.ink` | `color: T.ink` |
+| `fontFamily: TOK.sans` | `fontFamily: 'BeVietnamPro_400Regular'` |
+| `fontFamily: TOK.serif` | `fontFamily: 'PlayfairDisplay_700Bold'` |
+| `position: 'absolute', inset: 0` | `position: 'absolute', top: 0, left: 0, right: 0, bottom: 0` |
+| `gap: 8` | `gap: 8` (hỗ trợ từ RN 0.71+) |
+
+---
+
+### Bước 6 — Kiểm tra TypeScript
+
+```bash
+npm run ts
+```
+
+Chạy sau mỗi lần thêm file mới. Sửa hết lỗi trước khi test trên simulator.
+
+---
+
+### Bước 7 — Test trên simulator
+
+```bash
+npx expo start
+# bấm 'i' để mở iOS simulator
+# bấm 'r' để reload sau khi sửa code
+```
+
+Checklist khi test:
+- Happy path hoạt động không
+- Trạng thái loading/error hiển thị đúng không
+- Không crash khi back lại màn hình
+- Không crash khi permission bị từ chối
+
+---
+
+### Bước 8 — Dọn dẹp trước commit
+
+- Xóa hết `console.log` debug
+- Chạy lại `npm run ts` để xác nhận clean
+
+---
+
+### Bước 9 — Commit
+
+```bash
+git add <các file liên quan>   # không dùng git add -A
+git commit -m "feat(task7): mô tả ngắn gọn"
+```
+
+---
+
+### Bước 10 — Push và tạo PR
+
+```bash
+git push -u origin feat/<task-id>-<slug>
+gh pr create --title "feat(task7): ..." --body "..."
+```
+
+---
+
+## 11. Các lỗi hay gặp
 
 | Lỗi | Nguyên nhân | Fix |
 |---|---|---|
