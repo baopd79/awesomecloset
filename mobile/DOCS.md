@@ -4,7 +4,130 @@ Tài liệu này dành cho developer lần đầu làm việc với React Native
 
 ---
 
-## 1. Lý thuyết nền tảng
+## 1. Luồng triển khai React Native / Expo
+
+Hiểu flow này giúp debug nhanh hơn khi có vấn đề.
+
+### Tổng quan kiến trúc
+
+```
+TypeScript code
+      ↓
+  Metro Bundler     (transpile + bundle JS)
+      ↓
+  JS Bundle         (chạy trong JS engine trên device)
+      ↓
+  JSI / Bridge      (giao tiếp 2 chiều)
+      ↓
+  Native Layer      (UIKit/SwiftUI trên iOS, Android Views)
+      ↓
+  Màn hình thật
+```
+
+React Native **không chạy trong WebView**. JS code chạy trong engine riêng (Hermes trên Android, JSCore/Hermes trên iOS), giao tiếp với native layer qua một lớp trung gian. Kết quả render là native component thật của hệ điều hành.
+
+---
+
+### Metro Bundler — dev server
+
+Khi chạy `npx expo start`, Metro khởi động và làm 3 việc:
+
+1. **Transpile** — TypeScript → JavaScript, JSX → `React.createElement()` calls
+2. **Bundle** — gom tất cả `import` thành 1 file JS
+3. **Serve** — expose bundle qua HTTP để app tải về
+
+App trên simulator/device kết nối tới Metro, tải bundle về và chạy. Mỗi khi bạn sửa file, Metro re-bundle phần đó và push lên app — đây là **Fast Refresh** (không restart app, chỉ update component đang sửa).
+
+```
+Sửa file → Metro detect change → re-bundle → push delta → app update
+                                                          (< 1 giây)
+```
+
+Bấm `r` trong terminal để **full reload** (tải lại toàn bộ bundle + reset state).
+
+---
+
+### Expo Router — từ file đến màn hình
+
+Expo Router chạy một bước **ahead-of-time** khi Metro khởi động: nó scan toàn bộ `app/` và tạo ra routing config tự động.
+
+```
+app/
+  _layout.tsx          → root navigator (Slot)
+  (tabs)/
+    _layout.tsx        → tab navigator
+    index.tsx          → route "/"
+    add.tsx            → route "/add"
+  (auth)/
+    index.tsx          → route "/(auth)"
+```
+
+Khi user navigate tới một route:
+1. Expo Router tìm file tương ứng
+2. Import component (lazy — chưa dùng thì chưa load)
+3. Render vào navigator
+
+**Lưu ý:** Thêm file mới vào `app/` → Metro tự detect, không cần restart.
+
+---
+
+### Native Modules — Expo SDK
+
+Các package như `expo-image-picker`, `expo-file-system` có 2 phần:
+
+```
+JS wrapper (TypeScript API)
+      ↓ JSI call
+Native module (Swift/Kotlin code)
+```
+
+Khi bạn gọi `ImagePicker.launchCameraAsync()`, JS gọi qua JSI xuống Swift code thật của iOS. Đây là lý do:
+- Cần native build (không chạy được trên Expo Go SDK 56)
+- Một số API chỉ có trên device thật (camera), không có trên simulator
+
+---
+
+### Build types
+
+| Loại | Dùng khi | Thời gian |
+|---|---|---|
+| **Dev (Metro)** | Viết code hàng ngày | Ngay lập tức |
+| **Dev build** (`expo run:ios`) | Test native modules trên device thật | ~10 phút lần đầu, incremental sau |
+| **Preview build** (EAS) | Test với tester bên ngoài | ~15 phút trên cloud |
+| **Production build** (EAS) | App Store / Play Store | ~20 phút trên cloud |
+
+Project đang ở giai đoạn **Dev (Metro)** trên simulator. Khi cần test camera thật → cần **Dev build** trên device.
+
+---
+
+### App startup flow
+
+Khi app khởi động, thứ tự các bước là:
+
+```
+1. Native app launch → load JS bundle
+2. RootLayout mount
+3. SplashScreen.preventAutoHideAsync()   ← giữ splash screen
+4. Load fonts (async)
+5. Kiểm tra Supabase session (async)
+6. Kiểm tra AsyncStorage (onboarding flag)
+7. Tất cả ready → SplashScreen.hideAsync()
+8. Redirect đúng route (auth / onboarding / tabs)
+```
+
+`app/_layout.tsx` orchestrate toàn bộ flow này. Nếu render `null` trong lúc chờ → splash screen vẫn hiển thị, user không thấy màn hình trắng.
+
+---
+
+### State và re-render
+
+React Native dùng đúng React model — **state thay đổi → component re-render → native layer update**. Không có virtual DOM diff như web, nhưng RN có reconciler riêng làm việc tương tự.
+
+Performance tip: `StyleSheet.create()` xử lý styles ở native layer một lần khi module load — nhanh hơn inline object `style={{ ... }}` (tạo object mới mỗi render). Dùng inline style chỉ khi giá trị dynamic (ví dụ: width theo state).
+
+---
+
+## 2. Lý thuyết nền tảng
 
 ### React Native là gì?
 
