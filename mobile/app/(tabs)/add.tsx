@@ -73,7 +73,8 @@ export default function AddScreen() {
                 : q,
             ),
           );
-        } catch {
+        } catch (e) {
+          console.error('[upload error]', String(e));
           setQueue((prev) =>
             prev.map((q) => (q.key === qi.key ? { ...q, status: 'failed' as LocalStatus } : q)),
           );
