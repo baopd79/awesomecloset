@@ -4,18 +4,19 @@
 // and the root layout will redirect to (tabs).
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { PrimaryBtn } from '@/components/ui/PrimaryBtn';
+import { supabase } from '@/lib/supabase';
 import { T } from '@/lib/theme';
-import { ONBOARDING_KEY } from '../_layout';
+import { onboardingKey, useOnboarding } from '../_layout';
 
 export default function OnboardingScreen() {
-  const router = useRouter();
+  const { completeOnboarding } = useOnboarding();
 
   async function complete() {
-    await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
-    router.replace('/(tabs)');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) await AsyncStorage.setItem(onboardingKey(user.id), 'true');
+    completeOnboarding();
   }
 
   return (

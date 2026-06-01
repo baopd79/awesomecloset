@@ -13,12 +13,18 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Slot, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { useSession } from '@/hooks/useSession';
+
+interface OnboardingCtx { completeOnboarding: () => void }
+const OnboardingContext = createContext<OnboardingCtx>({ completeOnboarding: () => {} });
+export function useOnboarding() { return useContext(OnboardingContext); }
 
 SplashScreen.preventAutoHideAsync();
 
-export const ONBOARDING_KEY = 'hasOnboarded';
+export function onboardingKey(userId: string) {
+  return `hasOnboarded:${userId}`;
+}
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -37,10 +43,16 @@ export default function RootLayout() {
   const segments = useSegments();
 
   useEffect(() => {
-    AsyncStorage.getItem(ONBOARDING_KEY).then((val) => {
+    if (sessionLoading) return;
+    const key = session ? onboardingKey(session.user.id) : null;
+    if (!key) {
+      setHasOnboarded(false);
+      return;
+    }
+    AsyncStorage.getItem(key).then((val) => {
       setHasOnboarded(val === 'true');
     });
-  }, []);
+  }, [session, sessionLoading]);
 
   const ready = fontsLoaded && !sessionLoading && hasOnboarded !== null;
 
@@ -63,5 +75,9 @@ export default function RootLayout() {
 
   if (!ready) return null;
 
-  return <Slot />;
+  return (
+    <OnboardingContext.Provider value={{ completeOnboarding: () => setHasOnboarded(true) }}>
+      <Slot />
+    </OnboardingContext.Provider>
+  );
 }

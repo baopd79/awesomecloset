@@ -17,7 +17,7 @@ import { IconBtn } from '@/components/ui/IconBtn';
 import { PrimaryBtn } from '@/components/ui/PrimaryBtn';
 import { supabase } from '@/lib/supabase';
 import { T } from '@/lib/theme';
-import { ONBOARDING_KEY } from '../_layout';
+import { onboardingKey } from '../_layout';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -41,7 +41,8 @@ export default function RegisterScreen() {
       return;
     }
     // Mark onboarding as NOT completed — root layout will route to (onboarding)
-    await AsyncStorage.setItem(ONBOARDING_KEY, 'false');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) await AsyncStorage.setItem(onboardingKey(user.id), 'false');
     // onAuthStateChange fires → root layout redirects to (onboarding)
   }
 

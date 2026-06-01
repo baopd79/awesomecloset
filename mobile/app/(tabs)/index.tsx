@@ -1,8 +1,9 @@
 // Hôm nay screen — placeholder, content implemented in Task 15
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Kicker } from '@/components/ui/Kicker';
 import { T } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
 
 export default function HomeScreen() {
   return (
@@ -12,6 +13,9 @@ export default function HomeScreen() {
         <Text style={styles.title}>Gợi ý outfit</Text>
         <Text style={styles.sub}>Nội dung sẽ có ở Task 15</Text>
       </View>
+      <Pressable style={styles.logoutBtn} onPress={() => supabase.auth.signOut()}>
+        <Text style={styles.logoutText}>Đăng xuất</Text>
+      </Pressable>
     </SafeAreaView>
   );
 }
@@ -27,4 +31,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   sub: { fontFamily: 'BeVietnamPro_400Regular', fontSize: 14, color: T.sub, marginTop: 8, textAlign: 'center' },
+  logoutBtn: { margin: 24, padding: 14, alignItems: 'center' },
+  logoutText: { fontFamily: 'BeVietnamPro_400Regular', fontSize: 14, color: T.sub },
 });
