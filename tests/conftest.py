@@ -24,7 +24,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from testcontainers.postgres import PostgresContainer
 
 _MIGRATIONS_DIR = Path(__file__).parent.parent / "supabase" / "migrations"
-_SKIP_MIGRATIONS = {"004_rls.sql", "005_storage.sql"}
+_SKIP_MIGRATIONS = {"004_rls.sql", "005_storage.sql", "006_realtime.sql"}
 
 
 def _split_sql(sql: str) -> list[str]:
