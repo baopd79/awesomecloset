@@ -31,6 +31,8 @@ make fmt-fix          # ruff format
 
 **Deployment**: Two processes from the same codebase — API server (`backend.main:app`) and ARQ worker (`backend.workers.main.WorkerSettings`).
 
+**Feature status**: `items` is the only implemented feature. `suggest`, `outfits`, and `analytics` are empty stubs planned for post-MVP. `design_handoff_awesomecloset/` contains JSX prototypes and mockups (not wired to the backend).
+
 ### Backend Feature Layout
 
 Each feature is a self-contained folder: `backend/<feature>/{models, repository, service, router, schemas}.py`
@@ -87,7 +89,9 @@ Upload returns `202 Accepted` immediately. Processing runs in the ARQ worker:
 2. `tagging` — Gemini Flash multimodal (`backend/workers/ai_pipeline.py`)
 3. `ready`
 
-Each step updates `processing_status`. Errors write to `processing_error`. Frontend subscribes via Supabase Realtime. ARQ job IDs are deterministic (`process_item:{item_id}`) — safe to re-enqueue (deduplicates). Worker re-enqueues orphaned items on startup.
+Each step updates `processing_status`. Errors write to `processing_error`. Frontend subscribes via Supabase Realtime. ARQ job IDs are deterministic (`process_item:{item_id}`) — safe to re-enqueue (deduplicates). Worker re-enqueues orphaned items on startup (`on_startup` in `WorkerSettings`).
+
+Storage paths follow the pattern `{user_id}/{item_id}/{filename}` (e.g. `original.jpg`, `processed.png`, `thumbnail.jpg`). Thumbnails are 400×400 JPEG composited on white, used as Gemini input to avoid sending full-size images.
 
 ### Auth
 
@@ -108,6 +112,19 @@ All external services have an ABC interface (`StorageClient`, `BackgroundRemoval
 ### Error Handling
 
 Services raise `AppException(code="...", status=<int>, **extra)`. A global handler in `main.py` converts these to JSON responses. Routers do not catch `AppException`.
+
+### HTTP Conventions
+
+- Partial updates use `PATCH`, not `PUT`.
+- All endpoints declare `response_model`.
+- Use status code constants: `status.HTTP_202_ACCEPTED`, `status.HTTP_204_NO_CONTENT`, etc.
+- `POST /api/suggest/outfit` returns `403 CLOSET_NOT_READY` (with `items_count` and `items_required: 15`) when the closet has fewer than 15 items — gate enforced at the service layer.
+
+### Logging & Rate Limiting
+
+Structured logging via loguru. Log `request_id`, `user_id`, and AI call duration. Rate limiting on AI endpoints via slowapi. All I/O must be `async/await`.
+
+When logging wear events, the service must fetch and snapshot all item data before inserting into `wear_logs`.
 
 ## Testing
 
