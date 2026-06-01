@@ -16,7 +16,7 @@ export function useRealtimeItem(
       .channel(`item-status:${itemId}`)
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'items', filter: `id=eq.${itemId}` },
+        { event: 'UPDATE', schema: 'public', table: 'clothing_items', filter: `id=eq.${itemId}` },
         (payload) => {
           const rec = payload.new as { processing_status: ProcessingStatus; processing_error: string | null };
           onUpdateRef.current(rec.processing_status, rec.processing_error ?? null);

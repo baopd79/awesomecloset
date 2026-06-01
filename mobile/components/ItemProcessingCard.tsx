@@ -56,6 +56,8 @@ export function ItemProcessingCard({ itemId, localUri, initialStatus, onReady }:
     }
   };
 
+  const [barWidth, setBarWidth] = useState(0);
+
   const done = status === 'ready';
   const failed = status === 'failed';
   const uploadFailed = status === 'failed' && !itemId;
@@ -85,11 +87,14 @@ export function ItemProcessingCard({ itemId, localUri, initialStatus, onReady }:
             </Text>
           ) : (
             <>
-              <View style={styles.barBg}>
+              <View
+                style={styles.barBg}
+                onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+              >
                 <View
                   style={[
                     styles.barFill,
-                    { width: `${step.progress * 100}%`, backgroundColor: done ? T.sage : T.accent },
+                    { width: barWidth * step.progress, backgroundColor: done ? T.sage : T.accent },
                   ]}
                 />
               </View>

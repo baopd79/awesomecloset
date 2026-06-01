@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from './supabase';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
@@ -34,24 +35,22 @@ async function getToken(): Promise<string> {
 
 export async function uploadItem(fileUri: string): Promise<ItemResponse> {
   const token = await getToken();
-  const filename = fileUri.split('/').pop() ?? 'photo.jpg';
-  const ext = filename.split('.').pop()?.toLowerCase() ?? 'jpg';
-  const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
 
-  const formData = new FormData();
-  formData.append('file', { uri: fileUri, name: filename, type: mimeType } as unknown as Blob);
+  const result = await FileSystem.uploadAsync(
+    `${API_URL}/api/items/upload`,
+    fileUri,
+    {
+      httpMethod: 'POST',
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      fieldName: 'file',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 
-  const response = await fetch(`${API_URL}/api/items/upload`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Upload failed (${response.status}): ${text}`);
+  if (result.status < 200 || result.status >= 300) {
+    throw new Error(`Upload failed (${result.status}): ${result.body}`);
   }
-  return response.json();
+  return JSON.parse(result.body);
 }
 
 export async function retryItem(itemId: string): Promise<ItemResponse> {
