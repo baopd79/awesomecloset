@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { ClosetGrid } from '@/components/ClosetGrid';
 import { FilterBar } from '@/components/FilterBar';
 import { Icon } from '@/components/ui/Icon';
@@ -13,6 +13,8 @@ export default function ClosetScreen() {
   const router = useRouter();
   const { items, allItems, loading, category, setCategory, query, setQuery, archive, refresh } =
     useCloset();
+
+  useFocusEffect(React.useCallback(() => { void refresh(); }, [refresh]));
 
   const readyCount = allItems.filter((i) => i.processing_status === 'ready').length;
 
