@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID
 
@@ -11,6 +12,12 @@ from backend.items.models import (
     ClothingType,
     ProcessingStatus,
 )
+
+
+class SortBy(str, Enum):
+    created_at = "created_at"
+    last_worn_at = "last_worn_at"
+    wear_count = "wear_count"
 
 
 class ItemResponse(BaseModel):
@@ -57,3 +64,8 @@ class TagsUpdateRequest(BaseModel):
             if len(tag) > 50:
                 raise ValueError("each tag cannot exceed 50 characters")
         return tags
+
+
+class ItemListResponse(BaseModel):
+    items: list[ItemResponse]
+    next_cursor: str | None

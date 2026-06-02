@@ -1,14 +1,14 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from backend.core.config import settings
 from backend.core.dependencies import ArqDep, CurrentUserDep, SessionDep
 from backend.core.storage import SupabaseStorageClient
 from backend.items.models import ClothingOccasion, ClothingSeason, ClothingType
 from backend.items.repository import ItemRepository
-from backend.items.schemas import ItemResponse, TagsUpdateRequest
+from backend.items.schemas import ItemListResponse, ItemResponse, SortBy, TagsUpdateRequest
 from backend.items.service import ItemService
 
 router = APIRouter(prefix="/api/items", tags=["items"])
@@ -34,7 +34,7 @@ async def upload_item(
     return ItemResponse.model_validate(item)
 
 
-@router.get("", response_model=list[ItemResponse])
+@router.get("", response_model=ItemListResponse)
 async def list_items(
     user_id: CurrentUserDep,
     svc: ServiceDep,
@@ -42,11 +42,26 @@ async def list_items(
     occasion: ClothingOccasion | None = None,
     season: ClothingSeason | None = None,
     is_archived: bool | None = None,
-) -> list[ItemResponse]:
-    items = await svc.list_items(
-        UUID(user_id), type=type, occasion=occasion, season=season, is_archived=is_archived
+    sort_by: SortBy = SortBy.created_at,
+    q: str | None = None,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+) -> ItemListResponse:
+    items, next_cursor = await svc.list_items(
+        UUID(user_id),
+        type=type,
+        occasion=occasion,
+        season=season,
+        is_archived=is_archived,
+        sort_by=sort_by,
+        q=q,
+        cursor=cursor,
+        limit=limit,
     )
-    return [ItemResponse.model_validate(i) for i in items]
+    return ItemListResponse(
+        items=[ItemResponse.model_validate(i) for i in items],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/{item_id}", response_model=ItemResponse)

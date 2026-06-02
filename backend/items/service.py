@@ -18,7 +18,7 @@ from backend.items.models import (
     ProcessingStatus,
 )
 from backend.items.repository import ItemRepository
-from backend.items.schemas import TagsUpdateRequest
+from backend.items.schemas import SortBy, TagsUpdateRequest
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 MAX_DIMENSION = 1920
@@ -78,20 +78,43 @@ class ItemService:
         occasion: ClothingOccasion | None = None,
         season: ClothingSeason | None = None,
         is_archived: bool | None = None,
-    ) -> list[ClothingItem]:
-        return await self._repo.list_items(
+        sort_by: SortBy = SortBy.created_at,
+        q: str | None = None,
+        cursor: str | None = None,
+        limit: int = 30,
+    ) -> tuple[list[ClothingItem], str | None]:
+        items, next_cursor = await self._repo.list_items(
             user_id,
             type=type,
             occasion=occasion,
             season=season,
             is_archived=is_archived,
+            sort_by=sort_by,
+            q=q,
+            cursor=cursor,
+            limit=limit,
         )
+        await self._sign_items(items)
+        return items, next_cursor
 
     async def get_item(self, item_id: UUID, user_id: UUID) -> ClothingItem:
         item = await self._repo.get_by_id(item_id, user_id)
         if item is None:
             raise AppException(code="ITEM_NOT_FOUND", status=404, item_id=str(item_id))
+        await self._sign_items([item])
         return item
+
+    async def _sign_items(self, items: list[ClothingItem]) -> None:
+        """Replace storage paths with signed URLs in-place (read-only — no flush after this)."""
+        paths = list({p for item in items for p in [item.thumbnail_url, item.processed_url] if p})
+        if not paths:
+            return
+        signed = await self._storage.get_signed_urls_batch(BUCKET, paths)
+        for item in items:
+            if item.thumbnail_url and item.thumbnail_url in signed:
+                item.thumbnail_url = signed[item.thumbnail_url]
+            if item.processed_url and item.processed_url in signed:
+                item.processed_url = signed[item.processed_url]
 
     async def update_tags(
         self, item_id: UUID, user_id: UUID, body: TagsUpdateRequest
