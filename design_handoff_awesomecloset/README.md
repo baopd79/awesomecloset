@@ -185,6 +185,135 @@ State chính (hiện ở component `App`):
 - Khung thiết kế: **iPhone 390×844** (logic px = dp trong RN).
 - Hit target nút icon ≥ 42px; nút shutter 66px; nút chính cao 50px.
 
+---
+
+## Design System chuẩn hóa (FS · TXT · SP · Theme)
+
+> Phần này **chuẩn hóa** các giá trị rải rác ở trên thành thang/token đặt tên, để mọi màn dùng chung một nguồn — KHÔNG bịa cỡ chữ/spacing mới. Toàn bộ gom từ giá trị thực trong prototype (làm tròn về bậc gần nhất). Đơn vị = dp (React Native).
+
+### SP — Spacing scale
+Thang 4pt. Mọi padding/gap/margin phải snap về một bậc.
+
+| Token | Giá trị | Dùng cho |
+|---|---|---|
+| `sp0` | 0 | reset |
+| `sp1` | 4 | gap icon–text, khe nhỏ |
+| `sp2` | 8 | gap chip, padding nhỏ |
+| `sp3` | 12 | gap card, padding trung |
+| `sp4` | 16 | **padding ngang màn (chuẩn)**, gap list |
+| `sp5` | 20 | padding card lớn |
+| `sp6` | 24 | padding ngang màn rộng, section gap |
+| `sp7` | 32 | khoảng cách lớn giữa khối |
+| `sp8` | 40 | padding dọc hero/empty state |
+| ~~`sp10`~~ | ~~54–58~~ | **Không dùng giá trị cứng** — luôn dùng `useSafeAreaInsets().top` từ `react-native-safe-area-context` (thay đổi theo device) |
+
+*Quy ước: padding ngang màn mặc định `sp4` (16); màn nội dung thưa (Onboarding/Auth) dùng `sp6`–`sp8`.*
+
+### FS — Font size scale
+| Token | Size / Line-height | Ghi chú |
+|---|---|---|
+| `fs-caption` | 11 / 16 | kicker, caption, badge |
+| `fs-sm` | 12.5 / 18 | text phụ, meta |
+| `fs-body` | 14 / 20 | **body chuẩn** |
+| `fs-md` | 15.5 / 22 | body nhấn, mô tả welcome |
+| `fs-label` | 16 / 22 | nhãn nút, field value |
+| `fs-h3` | 20 / 26 | tiêu đề card/section |
+| `fs-h2` | 25 / 30 | tên outfit nổi |
+| `fs-h1` | 28 / 32 | tiêu đề item/outfit |
+| `fs-title` | 34 / 38 | tiêu đề màn (Tủ đồ, Thống kê) |
+| `fs-display` | 40 / 42 | greeting / onboarding |
+| `fs-hero` | 44 / 46 | tiêu đề Welcome |
+| `fs-numeric` | 56 / 56 | số lớn (nhiệt độ) |
+
+### TXT — Named text styles
+Mỗi style = font + size + weight + letter-spacing. **Luôn dùng style đặt tên, không set cỡ rời.**
+
+| Style | Font | Size (FS) | Weight | L-spacing | Dùng cho |
+|---|---|---|---|---|---|
+| `txt.hero` | Playfair Display | fs-hero | 600 | -0.8 | Welcome headline |
+| `txt.display` | Playfair Display | fs-display | 600 | -0.5 | greeting, onboarding |
+| `txt.title` | Playfair Display | fs-title | 600 | -0.5 | tiêu đề màn |
+| `txt.h1` | Playfair Display | fs-h1 | 600 | -0.3 | item/outfit name |
+| `txt.h2` | Playfair Display | fs-h2 | 600 | -0.2 | tên outfit card |
+| `txt.h3` | Playfair Display | fs-h3 | 600 | 0 | tiêu đề card/section |
+| `txt.numeric` | Playfair Display | fs-numeric | 500 | -1.5 | nhiệt độ |
+| `txt.body` | Be Vietnam Pro | fs-body | 400 | 0 | body chuẩn |
+| `txt.bodyStrong` | Be Vietnam Pro | fs-body | 600 | 0 | body nhấn |
+| `txt.md` | Be Vietnam Pro | fs-md | 400 | 0 | mô tả welcome |
+| `txt.label` | Be Vietnam Pro | fs-label | 600 | 0.2 | nhãn nút (sans) |
+| `txt.button` | Playfair Display | fs-label | 500 | 0.2 | chữ PrimaryBtn |
+| `txt.caption` | Be Vietnam Pro | fs-sm | 400 | 0 | meta, caption |
+| `txt.kicker` | Be Vietnam Pro | fs-caption | 600 | +2 (UPPERCASE) | Kicker / nhãn nhỏ |
+
+*Lưu ý: serif (Playfair) có biến thể **italic** dùng để nhấn 1 từ trong tiêu đề — giữ làm prop của style, không tạo style riêng.*
+
+### Radius — token đặt tên
+| Token | Mềm (mặc định) | Vừa | Sắc | Dùng cho |
+|---|---|---|---|---|
+| `radius.card` | 24 | 16 | 8 | SoftCard, sheet, viewfinder |
+| `radius.sm` | 16 | 12 | 6 | thumbnail, ô con trong card |
+| `radius.pill` | 999 | 999 | 999 | pill, chip, nút tròn, avatar |
+| `radius.field` | 14 | 14 | 14 | input (cố định) |
+
+### Shadow — token đặt tên
+RN không support multi-layer shadow — giá trị CSS bên dưới chỉ là visual reference. Dùng giá trị RN thật từ `mobile/lib/theme.ts` (`shadow` và `shadowLg`).
+
+| Visual reference (CSS) | Token |
+|---|---|
+| `0 1px 2px rgba(50,38,24,0.05), 0 8px 22px rgba(60,45,28,0.07)` | `shadow.card` |
+| `0 2px 6px rgba(50,38,24,0.06), 0 20px 48px rgba(60,45,28,0.14)` | `shadow.lg` |
+
+*RN implementation: `shadowColor/Offset/Opacity/Radius` (iOS) + `elevation` (Android). Xem `mobile/lib/theme.ts` để lấy giá trị chính xác.*
+
+### ThemeProvider + useTheme() — interface chuẩn
+Mọi token (màu, FS, TXT, SP, radius, shadow) phải đi qua một `ThemeProvider` duy nhất, sinh ra từ 4 lựa chọn của người dùng (màn Appearance). Port từ hàm `buildVars` trong `app-core.jsx`.
+
+```ts
+// theme/types.ts
+export type AccentKey = 'clay' | 'sage' | 'mono' | 'plum';   // Nâu đất | Xanh rêu | Than chì | Mận khô
+export type PaperKey  = 'warm' | 'neutral' | 'bright';        // Ấm | Trung tính | Sáng
+export type CornerKey = 'soft' | 'medium' | 'sharp';          // Mềm | Vừa | Sắc
+
+export interface ThemeChoice {
+  accent: AccentKey;      // mặc định 'clay'
+  paper: PaperKey;        // mặc định 'neutral'
+  corners: CornerKey;     // mặc định 'soft'
+  serifHeads: boolean;    // mặc định true
+}
+
+export interface Theme {
+  color: {
+    bg: string; bg2: string; surface: string; ground: string;
+    ink: string; ink2: string; sub: string; faint: string; line: string;
+    accent: string; accentSoft: string;
+    sage: string; sageSoft: string; star: string; danger: string;
+  };
+  fs: Record<'caption'|'sm'|'body'|'md'|'label'|'h3'|'h2'|'h1'|'title'|'display'|'hero'|'numeric', { size: number; lh: number }>;
+  txt: Record<string, TextStyle>;   // các named text style ở bảng TXT
+  sp: (step: number) => number;     // sp(4) => 16  (step * 4, trừ sp10 = safe-area)
+  radius: { card: number; sm: number; pill: number; field: number };
+  shadow: { card: ViewStyle; lg: ViewStyle };
+}
+
+// theme/ThemeProvider.tsx
+// - Lưu ThemeChoice vào AsyncStorage (key 'theme'), khôi phục khi mở app.
+// - buildTheme(choice): map accent/paper/corners → bảng token (xem buildVars + các bảng "thay thế" ở trên).
+// - serifHeads=false → các txt.* serif đổi sang Be Vietnam Pro.
+export function ThemeProvider({ children }: { children: ReactNode }): JSX.Element;
+export function useTheme(): Theme & { choice: ThemeChoice; setChoice: (c: Partial<ThemeChoice>) => void };
+```
+
+**Quy tắc dùng:** component KHÔNG hardcode màu/cỡ/spacing — luôn lấy từ `useTheme()`:
+```tsx
+const t = useTheme();
+<View style={{ padding: t.sp(4), backgroundColor: t.color.surface, borderRadius: t.radius.card, ...t.shadow.card }}>
+  <Text style={t.txt.h3}>Gợi ý hôm nay</Text>
+</View>
+```
+Màn **Appearance** chỉ gọi `setChoice({ accent: 'sage' })` → toàn app đổi tức thì.
+
+
+
 ### Iconography
 Toàn bộ icon là **SVG stroke** (vẽ trong `app-core.jsx`, hàm `Icon`, đối tượng `PATHS`), nét 1.8, bo tròn đầu. Trong RN nên thay bằng thư viện tương đương (vd `react-native-svg` + lift nguyên path, hoặc `lucide-react-native` cho các icon phổ thông: home, search, heart, camera, bell, shield… và tự vẽ icon đặc thù như hanger).
 
