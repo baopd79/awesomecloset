@@ -142,7 +142,7 @@ export default function ItemScreen() {
           <Text style={styles.wornText}>{fmtWornCount(item.wear_count)}</Text>
 
           {/* retry / improve cutout button */}
-          {(isFailed || isReady) && (
+          {isFailed && (
             <Pressable
               onPress={handleRetry}
               disabled={retrying}
@@ -154,7 +154,7 @@ export default function ItemScreen() {
                 <Icon name="spark" size={15} color={T.accent} />
               )}
               <Text style={styles.retryText}>
-                {isFailed ? 'Thử lại' : 'Cải thiện tách nền'}
+                Thử lại
               </Text>
             </Pressable>
           )}
