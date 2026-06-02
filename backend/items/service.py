@@ -127,6 +127,13 @@ class ItemService:
             item = await self._repo.update(item)
         return item
 
+    async def archive_item(self, item_id: UUID, user_id: UUID) -> ClothingItem:
+        item = await self.get_item(item_id, user_id)
+        async with transaction(self._session):
+            item.is_archived = True
+            item = await self._repo.update(item)
+        return item
+
     async def delete_item(self, item_id: UUID, user_id: UUID) -> None:
         item = await self.get_item(item_id, user_id)
         async with transaction(self._session):

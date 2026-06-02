@@ -94,6 +94,16 @@ async def delete_item(
     await svc.delete_item(item_id, UUID(user_id))
 
 
+@router.post("/{item_id}/archive", status_code=status.HTTP_200_OK, response_model=ItemResponse)
+async def archive_item(
+    item_id: UUID,
+    user_id: CurrentUserDep,
+    svc: ServiceDep,
+) -> ItemResponse:
+    item = await svc.archive_item(item_id, UUID(user_id))
+    return ItemResponse.model_validate(item)
+
+
 @router.post("/{item_id}/retry", status_code=status.HTTP_202_ACCEPTED, response_model=ItemResponse)
 async def retry_item(
     item_id: UUID,

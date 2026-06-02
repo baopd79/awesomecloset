@@ -53,6 +53,54 @@ export async function uploadItem(fileUri: string): Promise<ItemResponse> {
   return JSON.parse(result.body);
 }
 
+export interface ItemListResponse {
+  items: ItemResponse[];
+  next_cursor: string | null;
+}
+
+export interface ListItemsParams {
+  type?: string;
+  occasion?: string;
+  season?: string;
+  is_archived?: boolean;
+  sort_by?: 'created_at' | 'last_worn_at' | 'wear_count';
+  q?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export async function listItems(params: ListItemsParams = {}): Promise<ItemListResponse> {
+  const token = await getToken();
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null) query.set(k, String(v));
+  });
+  const response = await fetch(`${API_URL}/api/items?${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`List failed (${response.status})`);
+  return response.json() as Promise<ItemListResponse>;
+}
+
+export async function getItem(itemId: string): Promise<ItemResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/items/${itemId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`Get item failed (${response.status})`);
+  return response.json() as Promise<ItemResponse>;
+}
+
+export async function archiveItem(itemId: string): Promise<ItemResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/items/${itemId}/archive`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`Archive failed (${response.status})`);
+  return response.json() as Promise<ItemResponse>;
+}
+
 export async function retryItem(itemId: string): Promise<ItemResponse> {
   const token = await getToken();
 

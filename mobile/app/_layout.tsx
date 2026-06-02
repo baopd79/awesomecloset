@@ -11,9 +11,10 @@ import {
   PlayfairDisplay_700Bold_Italic,
 } from '@expo-google-fonts/playfair-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { createContext, useContext, useEffect, useState } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSession } from '@/hooks/useSession';
 
 interface OnboardingCtx { completeOnboarding: () => void }
@@ -63,21 +64,24 @@ export default function RootLayout() {
     const inAuth = segments[0] === '(auth)';
     const inOnboarding = segments[0] === '(onboarding)';
     const inTabs = segments[0] === '(tabs)';
+    const inApp = inTabs || segments[0] === 'item'; // screens pushed on top of tabs
 
     if (!session) {
       if (!inAuth) router.replace('/(auth)');
     } else if (!hasOnboarded) {
       if (!inOnboarding) router.replace('/(onboarding)');
     } else {
-      if (!inTabs) router.replace('/(tabs)');
+      if (!inApp) router.replace('/(tabs)');
     }
   }, [ready, session, hasOnboarded, segments, router]);
 
   if (!ready) return null;
 
   return (
-    <OnboardingContext.Provider value={{ completeOnboarding: () => setHasOnboarded(true) }}>
-      <Slot />
-    </OnboardingContext.Provider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <OnboardingContext.Provider value={{ completeOnboarding: () => setHasOnboarded(true) }}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </OnboardingContext.Provider>
+    </GestureHandlerRootView>
   );
 }
