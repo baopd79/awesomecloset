@@ -11,9 +11,10 @@ import {
   PlayfairDisplay_700Bold_Italic,
 } from '@expo-google-fonts/playfair-display';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Slot, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { createContext, useContext, useEffect, useState } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSession } from '@/hooks/useSession';
 
 interface OnboardingCtx { completeOnboarding: () => void }
@@ -76,8 +77,10 @@ export default function RootLayout() {
   if (!ready) return null;
 
   return (
-    <OnboardingContext.Provider value={{ completeOnboarding: () => setHasOnboarded(true) }}>
-      <Slot />
-    </OnboardingContext.Provider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <OnboardingContext.Provider value={{ completeOnboarding: () => setHasOnboarded(true) }}>
+        <Stack screenOptions={{ headerShown: false }} />
+      </OnboardingContext.Provider>
+    </GestureHandlerRootView>
   );
 }
