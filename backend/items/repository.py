@@ -37,6 +37,8 @@ def _encode_cursor(sort_val: Any, item_id: UUID, sort_by: SortBy) -> str:
 def _decode_cursor(cursor: str, sort_by: SortBy) -> tuple[Any, UUID]:
     try:
         data = json.loads(base64.urlsafe_b64decode(cursor.encode()))
+        if data["s"] != sort_by.value:
+            raise ValueError
         item_id = UUID(data["id"])
         raw = data["v"]
         if sort_by == SortBy.created_at or (sort_by == SortBy.last_worn_at and raw is not None):
@@ -92,7 +94,7 @@ class ItemRepository:
     async def list_items(
         self,
         user_id: UUID,
-        type: ClothingType | None = None,
+        item_type: ClothingType | None = None,
         occasion: ClothingOccasion | None = None,
         season: ClothingSeason | None = None,
         is_archived: bool | None = None,
@@ -107,8 +109,8 @@ class ItemRepository:
             ClothingItem.deleted_at.is_(None),
         )
 
-        if type is not None:
-            stmt = stmt.where(ClothingItem.type == type)
+        if item_type is not None:
+            stmt = stmt.where(ClothingItem.type == item_type)
         if occasion is not None:
             stmt = stmt.where(ClothingItem.occasion.contains([occasion]))
         if season is not None:

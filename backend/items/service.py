@@ -74,7 +74,7 @@ class ItemService:
     async def list_items(
         self,
         user_id: UUID,
-        type: ClothingType | None = None,
+        item_type: ClothingType | None = None,
         occasion: ClothingOccasion | None = None,
         season: ClothingSeason | None = None,
         is_archived: bool | None = None,
@@ -85,7 +85,7 @@ class ItemService:
     ) -> tuple[list[ClothingItem], str | None]:
         items, next_cursor = await self._repo.list_items(
             user_id,
-            type=type,
+            item_type=item_type,
             occasion=occasion,
             season=season,
             is_archived=is_archived,
@@ -97,10 +97,15 @@ class ItemService:
         await self._sign_items(items)
         return items, next_cursor
 
-    async def get_item(self, item_id: UUID, user_id: UUID) -> ClothingItem:
+    async def _get_or_raise(self, item_id: UUID, user_id: UUID) -> ClothingItem:
+        """Internal fetch — no URL signing, safe to use before DB writes."""
         item = await self._repo.get_by_id(item_id, user_id)
         if item is None:
             raise AppException(code="ITEM_NOT_FOUND", status=404, item_id=str(item_id))
+        return item
+
+    async def get_item(self, item_id: UUID, user_id: UUID) -> ClothingItem:
+        item = await self._get_or_raise(item_id, user_id)
         await self._sign_items([item])
         return item
 
@@ -119,28 +124,30 @@ class ItemService:
     async def update_tags(
         self, item_id: UUID, user_id: UUID, body: TagsUpdateRequest
     ) -> ClothingItem:
-        item = await self.get_item(item_id, user_id)
+        item = await self._get_or_raise(item_id, user_id)
         updates = body.model_dump(exclude_unset=True)
         for field, value in updates.items():
             setattr(item, field, value)
         async with transaction(self._session):
             item = await self._repo.update(item)
+        await self._sign_items([item])
         return item
 
     async def archive_item(self, item_id: UUID, user_id: UUID) -> ClothingItem:
-        item = await self.get_item(item_id, user_id)
+        item = await self._get_or_raise(item_id, user_id)
         async with transaction(self._session):
             item.is_archived = True
             item = await self._repo.update(item)
+        await self._sign_items([item])
         return item
 
     async def delete_item(self, item_id: UUID, user_id: UUID) -> None:
-        item = await self.get_item(item_id, user_id)
+        item = await self._get_or_raise(item_id, user_id)
         async with transaction(self._session):
             await self._repo.soft_delete(item)
 
     async def retry_processing(self, item_id: UUID, user_id: UUID) -> ClothingItem:
-        item = await self.get_item(item_id, user_id)
+        item = await self._get_or_raise(item_id, user_id)
         if item.processing_status != ProcessingStatus.failed:
             raise AppException(
                 code="ITEM_NOT_FAILED",
@@ -156,6 +163,7 @@ class ItemService:
             async with transaction(self._session):
                 await self._repo.update_status(item, ProcessingStatus.failed, error=str(exc))
             raise
+        await self._sign_items([item])
         return item
 
 
