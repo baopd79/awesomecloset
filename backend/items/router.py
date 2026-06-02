@@ -38,7 +38,7 @@ async def upload_item(
 async def list_items(
     user_id: CurrentUserDep,
     svc: ServiceDep,
-    type: ClothingType | None = None,
+    item_type: Annotated[ClothingType | None, Query(alias="type")] = None,
     occasion: ClothingOccasion | None = None,
     season: ClothingSeason | None = None,
     is_archived: bool | None = None,
@@ -49,7 +49,7 @@ async def list_items(
 ) -> ItemListResponse:
     items, next_cursor = await svc.list_items(
         UUID(user_id),
-        type=type,
+        item_type=item_type,
         occasion=occasion,
         season=season,
         is_archived=is_archived,

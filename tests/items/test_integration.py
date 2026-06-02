@@ -93,7 +93,7 @@ async def test_list_items_filter_by_type(repo, db_session, test_user_id):
         await repo.create(shirt)
         await repo.create(pants)
 
-    result, _ = await repo.list_items(test_user_id, type=ClothingType.shirt)
+    result, _ = await repo.list_items(test_user_id, item_type=ClothingType.shirt)
     assert all(i.type == ClothingType.shirt for i in result)
     assert any(i.id == shirt.id for i in result)
 

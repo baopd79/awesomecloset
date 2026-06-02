@@ -122,7 +122,7 @@ async def test_list_items_delegates_to_repo():
     items, next_cursor = await svc.list_items(user_id)
     repo.list_items.assert_awaited_once_with(
         user_id,
-        type=None,
+        item_type=None,
         occasion=None,
         season=None,
         is_archived=None,
