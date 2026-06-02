@@ -1,5 +1,6 @@
 // Design tokens — "Warm Editorial Soft" system
 // Source of truth: design_handoff_awesomecloset/README.md
+import { type TextStyle } from 'react-native';
 
 export type AccentKey = 'clay' | 'sage' | 'mono' | 'plum';
 export type PaperKey = 'warm' | 'neutral' | 'bright';
@@ -123,3 +124,71 @@ export function buildTheme(cfg: ThemeConfig = DEFAULT_THEME): Theme {
 }
 
 export const T = buildTheme(DEFAULT_THEME);
+
+// ---------------------------------------------------------------------------
+// SP — Spacing scale (4pt grid)
+// sp(4) = 16, sp(6) = 24, etc. sp7/sp8 jump to 32/40 per design spec.
+// ---------------------------------------------------------------------------
+const SP_SCALE = [0, 4, 8, 12, 16, 20, 24, 32, 40] as const;
+export type SpStep = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export function sp(step: SpStep): number {
+  return SP_SCALE[step];
+}
+
+// ---------------------------------------------------------------------------
+// FS — Font size scale (size + line-height pairs)
+// ---------------------------------------------------------------------------
+export const FS = {
+  caption: { size: 11,   lh: 16 },
+  sm:      { size: 12.5, lh: 18 },
+  body:    { size: 14,   lh: 20 },
+  md:      { size: 15.5, lh: 22 },
+  label:   { size: 16,   lh: 22 },
+  h3:      { size: 20,   lh: 26 },
+  h2:      { size: 25,   lh: 30 },
+  h1:      { size: 28,   lh: 32 },
+  title:   { size: 34,   lh: 38 },
+  display: { size: 40,   lh: 42 },
+  hero:    { size: 44,   lh: 46 },
+  numeric: { size: 56,   lh: 56 },
+} as const;
+
+// ---------------------------------------------------------------------------
+// RADIUS — fixed values not covered by theme corners
+// ---------------------------------------------------------------------------
+export const RADIUS = {
+  pill:  999,
+  field: 14,
+} as const;
+
+// ---------------------------------------------------------------------------
+// TXT — Named text styles
+// Loaded fonts: PlayfairDisplay_700Bold/Italic, BeVietnamPro_400/600/700.
+// No 500/600 Playfair variant loaded → all serif styles use 700Bold.
+// Italic variants are spread-overrides: <Text style={[TXT.h1, TXT.h1Italic]}>
+// ---------------------------------------------------------------------------
+const _SERIF      = 'PlayfairDisplay_700Bold';
+const _SERIF_I    = 'PlayfairDisplay_700Bold_Italic';
+const _SANS       = 'BeVietnamPro_400Regular';
+const _SANS_SEMI  = 'BeVietnamPro_600SemiBold';
+
+export const TXT = {
+  hero:         { fontFamily: _SERIF,     fontSize: FS.hero.size,    lineHeight: FS.hero.lh,    letterSpacing: -0.8 } as TextStyle,
+  heroItalic:   { fontFamily: _SERIF_I,   fontSize: FS.hero.size,    lineHeight: FS.hero.lh,    letterSpacing: -0.8 } as TextStyle,
+  display:      { fontFamily: _SERIF,     fontSize: FS.display.size, lineHeight: FS.display.lh, letterSpacing: -0.5 } as TextStyle,
+  displayItalic:{ fontFamily: _SERIF_I,   fontSize: FS.display.size, lineHeight: FS.display.lh, letterSpacing: -0.5 } as TextStyle,
+  title:        { fontFamily: _SERIF,     fontSize: FS.title.size,   lineHeight: FS.title.lh,   letterSpacing: -0.5 } as TextStyle,
+  titleItalic:  { fontFamily: _SERIF_I,   fontSize: FS.title.size,   lineHeight: FS.title.lh,   letterSpacing: -0.5 } as TextStyle,
+  h1:           { fontFamily: _SERIF,     fontSize: FS.h1.size,      lineHeight: FS.h1.lh,      letterSpacing: -0.3 } as TextStyle,
+  h1Italic:     { fontFamily: _SERIF_I,   fontSize: FS.h1.size,      lineHeight: FS.h1.lh,      letterSpacing: -0.3 } as TextStyle,
+  h2:           { fontFamily: _SERIF,     fontSize: FS.h2.size,      lineHeight: FS.h2.lh,      letterSpacing: -0.2 } as TextStyle,
+  h3:           { fontFamily: _SERIF,     fontSize: FS.h3.size,      lineHeight: FS.h3.lh,      letterSpacing:  0   } as TextStyle,
+  numeric:      { fontFamily: _SERIF,     fontSize: FS.numeric.size, lineHeight: FS.numeric.lh, letterSpacing: -1.5 } as TextStyle,
+  body:         { fontFamily: _SANS,      fontSize: FS.body.size,    lineHeight: FS.body.lh,    letterSpacing:  0   } as TextStyle,
+  bodyStrong:   { fontFamily: _SANS_SEMI, fontSize: FS.body.size,    lineHeight: FS.body.lh,    letterSpacing:  0   } as TextStyle,
+  md:           { fontFamily: _SANS,      fontSize: FS.md.size,      lineHeight: FS.md.lh,      letterSpacing:  0   } as TextStyle,
+  label:        { fontFamily: _SANS_SEMI, fontSize: FS.label.size,   lineHeight: FS.label.lh,   letterSpacing:  0.2 } as TextStyle,
+  button:       { fontFamily: _SERIF,     fontSize: FS.label.size,   lineHeight: FS.label.lh,   letterSpacing:  0.2 } as TextStyle,
+  caption:      { fontFamily: _SANS,      fontSize: FS.sm.size,      lineHeight: FS.sm.lh,      letterSpacing:  0   } as TextStyle,
+  kicker:       { fontFamily: _SANS_SEMI, fontSize: FS.caption.size, lineHeight: FS.caption.lh, letterSpacing:  2, textTransform: 'uppercase' } as TextStyle,
+} as const;
