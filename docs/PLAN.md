@@ -647,6 +647,19 @@ Git repo + CI (GitHub Actions)
 
 **Estimated scope:** S
 
+**⚠️ Prerequisite — ThemeProvider refactor (do trước khi implement Appearance screen):**
+
+Màn Appearance screen yêu cầu runtime theme switching. Hiện tại `T = buildTheme(DEFAULT_THEME)` là static singleton — không đổi được lúc chạy. Trước Task 17, cần refactor:
+
+1. Tạo `ThemeProvider` (React Context) + `useTheme()` hook — wraps `buildTheme()`, lưu `ThemeChoice` vào AsyncStorage
+2. Chuyển toàn bộ component từ `import { T } from '@/lib/theme'` sang `const t = useTheme()`
+3. Di chuyển `StyleSheet.create({...})` vào trong component với `useMemo(() => makeStyles(t), [t])`
+
+**Context về design tokens đã có sẵn (Task 11+):**
+- `SP`, `FS`, `RADIUS`, `TXT` đã được export từ `mobile/lib/theme.ts` (thêm ở commit `chore/theme-design-system-tokens`)
+- Code Task 1–10 vẫn dùng `T.xxx` (static) — chưa migrate, sẽ migrate trong bước refactor này
+- Code Task 11+ dùng `TXT`, `sp()`, `RADIUS`, `FS` trực tiếp — không hardcode fontFamily/fontSize/spacing
+
 ---
 
 ### Task 18: Push Notifications
