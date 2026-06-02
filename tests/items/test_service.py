@@ -7,7 +7,7 @@ from PIL import Image
 
 from backend.core.exceptions import AppException
 from backend.items.models import ClothingItem, ProcessingStatus
-from backend.items.schemas import TagsUpdateRequest
+from backend.items.schemas import SortBy, TagsUpdateRequest
 from backend.items.service import MAX_UPLOAD_BYTES, ItemService
 
 
@@ -37,7 +37,9 @@ def _make_session():
 def _make_service(session=None, repo=None, storage=None, arq=None) -> ItemService:
     session = session or _make_session()
     repo = repo or MagicMock()
-    storage = storage or MagicMock()
+    if storage is None:
+        storage = MagicMock()
+        storage.get_signed_urls_batch = AsyncMock(return_value={})
     arq = arq or MagicMock()
     return ItemService(session, repo, storage, arq)
 
@@ -111,17 +113,26 @@ async def test_upload_item_rejects_non_image():
 @pytest.mark.asyncio
 async def test_list_items_delegates_to_repo():
     user_id = uuid.uuid4()
-    expected = [ClothingItem(user_id=user_id)]
+    item = ClothingItem(user_id=user_id)
 
     repo = MagicMock()
-    repo.list_items = AsyncMock(return_value=expected)
+    repo.list_items = AsyncMock(return_value=([item], None))
     svc = _make_service(repo=repo)
 
-    result = await svc.list_items(user_id)
+    items, next_cursor = await svc.list_items(user_id)
     repo.list_items.assert_awaited_once_with(
-        user_id, type=None, occasion=None, season=None, is_archived=None
+        user_id,
+        type=None,
+        occasion=None,
+        season=None,
+        is_archived=None,
+        sort_by=SortBy.created_at,
+        q=None,
+        cursor=None,
+        limit=30,
     )
-    assert result == expected
+    assert items == [item]
+    assert next_cursor is None
 
 
 # --- get_item ---
