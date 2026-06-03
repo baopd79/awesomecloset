@@ -28,7 +28,7 @@ async def test_owm_client_parses_response():
         mock_cls.return_value = mock_ctx
 
         client = OpenWeatherMapClient(api_key="test-key")
-        result = await client.get_current(lat=10.76, lon=106.66)
+        result = await client.get_current(lat=10.76, lng=106.66)
 
     assert result.temp_c == 24.3
     assert result.city == "Ho Chi Minh City"
@@ -51,7 +51,7 @@ async def test_owm_client_raises_on_api_error():
 
         client = OpenWeatherMapClient(api_key="bad-key")
         with pytest.raises(AppException) as exc_info:
-            await client.get_current(lat=10.76, lon=106.66)
+            await client.get_current(lat=10.76, lng=106.66)
 
     assert exc_info.value.code == "WEATHER_UNAVAILABLE"
     assert exc_info.value.status == 502
@@ -115,3 +115,35 @@ def test_get_weather_partial_coords(client_with_mock_weather):
     resp = client_with_mock_weather.get("/api/suggest/weather?lat=10.76")
     assert resp.status_code == 400
     assert resp.json()["code"] == "LOCATION_REQUIRED"
+
+
+def test_get_weather_invalid_lat(client_with_mock_weather):
+    resp = client_with_mock_weather.get("/api/suggest/weather?lat=9999&lng=106.66")
+    assert resp.status_code == 422
+
+
+def test_get_weather_invalid_lng(client_with_mock_weather):
+    resp = client_with_mock_weather.get("/api/suggest/weather?lat=10.76&lng=999")
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_owm_client_raises_on_malformed_response():
+    from backend.core.exceptions import AppException
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"unexpected": "schema"}
+
+    with patch("backend.suggest.weather.httpx.AsyncClient") as mock_cls:
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_ctx)
+        mock_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_ctx.get = AsyncMock(return_value=mock_resp)
+        mock_cls.return_value = mock_ctx
+
+        client = OpenWeatherMapClient(api_key="test-key")
+        with pytest.raises(AppException) as exc_info:
+            await client.get_current(lat=10.76, lng=106.66)
+
+    assert exc_info.value.code == "WEATHER_UNAVAILABLE"

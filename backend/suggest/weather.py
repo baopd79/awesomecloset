@@ -29,20 +29,20 @@ OWM_URL = "https://api.openweathermap.org/data/2.5/weather"
 
 class WeatherClient(ABC):
     @abstractmethod
-    async def get_current(self, lat: float, lon: float) -> WeatherResponse: ...
+    async def get_current(self, lat: float, lng: float) -> WeatherResponse: ...
 
 
 class OpenWeatherMapClient(WeatherClient):
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
 
-    async def get_current(self, lat: float, lon: float) -> WeatherResponse:
+    async def get_current(self, lat: float, lng: float) -> WeatherResponse:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(
                 OWM_URL,
                 params={
                     "lat": lat,
-                    "lon": lon,
+                    "lon": lng,  # OWM uses "lon" as query param name
                     "appid": self._api_key,
                     "units": "metric",
                     "lang": "vi",
@@ -50,13 +50,16 @@ class OpenWeatherMapClient(WeatherClient):
             )
         if resp.status_code != 200:
             raise AppException(code="WEATHER_UNAVAILABLE", status=502)
-        data = resp.json()
-        return WeatherResponse(
-            temp_c=round(data["main"]["temp"], 1),
-            condition=data["weather"][0]["description"],
-            city=data["name"],
-            icon=data["weather"][0]["icon"],
-        )
+        try:
+            data = resp.json()
+            return WeatherResponse(
+                temp_c=round(data["main"]["temp"], 1),
+                condition=data["weather"][0]["description"],
+                city=data["name"],
+                icon=data["weather"][0]["icon"],
+            )
+        except (KeyError, IndexError, ValueError):
+            raise AppException(code="WEATHER_UNAVAILABLE", status=502)
 
 
 def manual_weather(condition: ManualCondition) -> WeatherResponse:
