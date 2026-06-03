@@ -23,6 +23,7 @@ async def get_jwks(request: Request) -> JWKSClient:
 
 
 async def get_current_user_id(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer),
     jwks: JWKSClient = Depends(get_jwks),
 ) -> str:
@@ -32,6 +33,8 @@ async def get_current_user_id(
         user_id: str | None = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        # Stash for downstream consumers (rate-limit key_func, request logging).
+        request.state.user_id = user_id
         return user_id
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
