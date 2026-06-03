@@ -1,10 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from backend.items.models import ClothingOccasion, ClothingType
-from backend.outfits.models import OutfitItemRole
+from backend.outfits.models import FeedbackAction, OutfitItemRole
 
 
 class OutfitItemIn(BaseModel):
@@ -65,3 +66,33 @@ class OutfitResponse(BaseModel):
 
 class OutfitListResponse(BaseModel):
     outfits: list[OutfitResponse]
+
+
+class WearOutfitIn(BaseModel):
+    rating: int | None = Field(default=None, ge=1, le=5)
+
+
+class WearLogResponse(BaseModel):
+    id: UUID
+    outfit_id: UUID
+    worn_date: date
+    items_snapshot: list[Any]
+    rating: int | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class FeedbackIn(BaseModel):
+    action: FeedbackAction
+    rating: int | None = Field(default=None, ge=1, le=5)
+
+
+class FeedbackResponse(BaseModel):
+    id: UUID
+    outfit_id: UUID
+    action: FeedbackAction
+    rating: int | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

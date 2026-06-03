@@ -6,9 +6,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.core.exceptions import AppException
-from backend.items.models import ClothingItem, ClothingType, ProcessingStatus
-from backend.outfits.models import Outfit, OutfitItem, OutfitItemRole
-from backend.outfits.schemas import CreateOutfitIn, OutfitItemIn, PatchOutfitItemsIn
+from backend.items.models import ClothingItem, ClothingStyle, ClothingType, ProcessingStatus
+from backend.outfits.models import FeedbackAction, Outfit, OutfitItem, OutfitItemRole
+from backend.outfits.schemas import (
+    CreateOutfitIn,
+    FeedbackIn,
+    OutfitItemIn,
+    PatchOutfitItemsIn,
+    WearOutfitIn,
+)
 from backend.outfits.service import OutfitService
 
 USER_ID = uuid.uuid4()
@@ -258,3 +264,135 @@ async def test_update_outfit_items_replaces_and_regenerates():
 
     repo.replace_outfit_items.assert_awaited_once()
     assert result.id == OUTFIT_ID
+
+
+def _outfit_item_mock(item_id: uuid.UUID) -> MagicMock:
+    oi = MagicMock(spec=OutfitItem)
+    oi.item_id = item_id
+    return oi
+
+
+def _outfit_mock() -> MagicMock:
+    outfit = MagicMock(spec=Outfit)
+    outfit.id = OUTFIT_ID
+    outfit.user_id = USER_ID
+    return outfit
+
+
+@pytest.mark.asyncio
+async def test_log_wear_snapshots_full_item_data_and_bumps():
+    item1 = _ready_item(ITEM_ID_1)
+    item1.type = ClothingType.t_shirt
+    item1.colors = [{"hex": "#FFFFFF"}]
+    item1.style = [ClothingStyle.casual]
+    item2 = _ready_item(ITEM_ID_2)
+    item2.type = ClothingType.jeans
+    item2.colors = None
+    item2.style = None
+
+    svc, repo, item_repo, _ = _make_service()
+    repo.get_by_id = AsyncMock(return_value=_outfit_mock())
+    repo.list_outfit_items = AsyncMock(
+        return_value=[_outfit_item_mock(ITEM_ID_1), _outfit_item_mock(ITEM_ID_2)]
+    )
+    item_repo.get_by_id = AsyncMock(
+        side_effect=lambda iid, uid: item1 if iid == ITEM_ID_1 else item2
+    )
+    repo.create_wear_log = AsyncMock(side_effect=lambda wl: wl)
+    item_repo.bump_wear = AsyncMock()
+
+    result = await svc.log_wear(OUTFIT_ID, USER_ID, WearOutfitIn(rating=4))
+
+    assert result.outfit_id == OUTFIT_ID
+    assert result.rating == 4
+    # Snapshot captures full item data fetched before insert
+    assert len(result.items_snapshot) == 2
+    snap1 = result.items_snapshot[0]
+    assert snap1["item_id"] == str(ITEM_ID_1)
+    assert snap1["type"] == "t_shirt"
+    assert snap1["colors"] == [{"hex": "#FFFFFF"}]
+    assert snap1["style"] == ["casual"]
+    # Both items bumped within the same call
+    assert item_repo.bump_wear.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_log_wear_skips_soft_deleted_items():
+    """Option A: items missing from get_by_id (soft-deleted) are excluded from snapshot + bump."""
+    item1 = _ready_item(ITEM_ID_1)
+    item1.type = None
+    item1.colors = None
+    item1.style = None
+
+    svc, repo, item_repo, _ = _make_service()
+    repo.get_by_id = AsyncMock(return_value=_outfit_mock())
+    repo.list_outfit_items = AsyncMock(
+        return_value=[_outfit_item_mock(ITEM_ID_1), _outfit_item_mock(ITEM_ID_2)]
+    )
+    # ITEM_ID_2 soft-deleted → get_by_id returns None
+    item_repo.get_by_id = AsyncMock(
+        side_effect=lambda iid, uid: item1 if iid == ITEM_ID_1 else None
+    )
+    repo.create_wear_log = AsyncMock(side_effect=lambda wl: wl)
+    item_repo.bump_wear = AsyncMock()
+
+    result = await svc.log_wear(OUTFIT_ID, USER_ID, WearOutfitIn())
+
+    assert len(result.items_snapshot) == 1
+    assert result.items_snapshot[0]["item_id"] == str(ITEM_ID_1)
+    assert item_repo.bump_wear.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_log_wear_outfit_not_found():
+    svc, repo, _, _ = _make_service()
+    repo.get_by_id = AsyncMock(return_value=None)
+
+    with pytest.raises(AppException) as exc:
+        await svc.log_wear(OUTFIT_ID, USER_ID, WearOutfitIn())
+
+    assert exc.value.code == "OUTFIT_NOT_FOUND"
+    assert exc.value.status == 404
+
+
+@pytest.mark.asyncio
+async def test_submit_feedback_success():
+    svc, repo, _, _ = _make_service()
+    repo.get_by_id = AsyncMock(return_value=_outfit_mock())
+    repo.create_feedback = AsyncMock(side_effect=lambda fb: fb)
+
+    result = await svc.submit_feedback(
+        OUTFIT_ID, USER_ID, FeedbackIn(action=FeedbackAction.saved, rating=5)
+    )
+
+    assert result.action == FeedbackAction.saved
+    assert result.rating == 5
+    repo.create_feedback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_submit_feedback_rating_with_negative_action_warns_not_blocks():
+    svc, repo, _, _ = _make_service()
+    repo.get_by_id = AsyncMock(return_value=_outfit_mock())
+    repo.create_feedback = AsyncMock(side_effect=lambda fb: fb)
+
+    with patch("backend.outfits.service.logger") as mock_logger:
+        result = await svc.submit_feedback(
+            OUTFIT_ID, USER_ID, FeedbackIn(action=FeedbackAction.disliked, rating=2)
+        )
+
+    # Warned but not blocked — feedback still persisted
+    mock_logger.warning.assert_called_once()
+    assert result.action == FeedbackAction.disliked
+    assert result.rating == 2
+
+
+@pytest.mark.asyncio
+async def test_submit_feedback_outfit_not_found():
+    svc, repo, _, _ = _make_service()
+    repo.get_by_id = AsyncMock(return_value=None)
+
+    with pytest.raises(AppException) as exc:
+        await svc.submit_feedback(OUTFIT_ID, USER_ID, FeedbackIn(action=FeedbackAction.saved))
+
+    assert exc.value.code == "OUTFIT_NOT_FOUND"
