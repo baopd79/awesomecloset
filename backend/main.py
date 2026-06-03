@@ -9,6 +9,7 @@ from backend.core.config import settings
 from backend.core.exceptions import AppException
 from backend.core.logging import request_logging_middleware
 from backend.items.router import router as items_router
+from backend.suggest.router import router as suggest_router
 from backend.workers.main import get_redis_settings
 
 
@@ -26,6 +27,7 @@ app = FastAPI(title="AwesomeCloset API", lifespan=lifespan)
 
 app.middleware("http")(request_logging_middleware)
 app.include_router(items_router)
+app.include_router(suggest_router)
 
 
 @app.exception_handler(AppException)
