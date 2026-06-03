@@ -4,6 +4,30 @@
 
 Build một AI personal closet app mobile-first cho người dùng Việt Nam. Core loop: chụp ảnh đồ → AI remove-bg + tag → digital closet → AI suggest outfit theo thời tiết + hoàn cảnh mỗi sáng. Stack: React Native (Expo) + FastAPI + Supabase + Gemini Flash + ARQ/Redis.
 
+## Progress (cập nhật 2026-06-04)
+
+| Task | Mô tả | Trạng thái |
+|---|---|---|
+| 0 | Git + CI | ✅ #3 |
+| 1 | DB migrations + RLS + storage | ✅ #4 |
+| 2 | Backend core | ✅ #5 |
+| 3 | ARQ worker skeleton | ✅ #6 |
+| 4 | Items upload + lifecycle | ✅ #7 |
+| 5 | rembg pipeline | ✅ #11 |
+| 6 | Mobile auth + navigation | ✅ #14 |
+| 7 | Mobile upload flow | ✅ #15 |
+| 8 | Gemini tagging | ✅ #12 |
+| 9 | Closet API | ✅ #16 |
+| 10 | Closet UI | ✅ #17 |
+| 11 | Outfits + collage | ✅ #21 |
+| 12 | Wear logging + feedback | ✅ #22 |
+| 13 | Weather endpoint (`GET /api/suggest/weather`) | ✅ #20 |
+| 14 | Suggest endpoint + cache | ⏳ Next |
+| 15 | Home + Outfit UI | ⏳ |
+| 16–21 | Analytics, gamification, push, deploy, EAS | ⏳ |
+
+Backend Phase 1 + 2 gần khép — còn **Task 14 (suggest)** để hoàn tất Phase 2 core AI loop; mobile còn **Task 15**.
+
 ## Git Workflow
 
 **Branch naming** — type prefix (Conventional Commits) + task number:
@@ -491,7 +515,7 @@ Git repo + CI (GitHub Actions)
 
 ### Task 13: Weather Endpoint
 
-**Description:** `GET /api/weather` nhận `lat`, `lng` từ query params, gọi OpenWeatherMap API, trả weather context dạng chuẩn cho Gemini prompt.
+**Description:** `GET /api/suggest/weather` nhận `lat`, `lng` từ query params, gọi OpenWeatherMap API, trả weather context dạng chuẩn cho Gemini prompt. (Route nằm trong feature `suggest` — prefix `/api/suggest`, không phải `/api/weather` như draft ban đầu.)
 
 **Acceptance criteria:**
 - [ ] Nhận `lat`, `lng` → gọi OpenWeatherMap current weather API
@@ -518,6 +542,13 @@ Git repo + CI (GitHub Actions)
 ### Task 14: Suggest Endpoint + Cache
 
 **Description:** `POST /api/suggest/outfit` là core AI feature. Gate check 15 items, build Gemini prompt với closet context + weather + occasion + lịch sử, cache kết quả theo `(user_id, date, context_hash)`.
+
+**Quyết định triển khai (chốt 2026-06-04):**
+- **Synchronous** trong request thread (không async qua ARQ) — suggestion là on-demand, user chờ kết quả ngay. Bảo vệ bằng cache + rate limit + timeout cho Gemini call. (Cập nhật SPEC §9 cho khớp ngoại lệ này.)
+- Collage 2-3 outfit generate **song song** (`asyncio.gather`) + graceful degradation (đã có từ Task 11) — không chặn response. Nếu đo latency thực tế kém → tách collage sang ARQ ở follow-up.
+- **slowapi chưa được wire** vào `main.py` (mới chỉ có trong deps) — Task 14 phải dựng `Limiter` + exception handler + decorator.
+- `daily_suggestion_cache` cần model SQLModel mới (bảng đã có sẵn từ Task 1).
+- Gemini suggestion client: tạo **ABC riêng trong `suggest/`** (không tái dùng code tagging coupled trong `workers/ai_pipeline.py`), inject để mock test. Prompt đặt trong `suggest/prompts.py`.
 
 **Acceptance criteria:**
 - [ ] Gate: đếm items `processing_status = ready AND deleted_at IS NULL`. Nếu < 15 → `403 CLOSET_NOT_READY {items_count, items_required: 15}`

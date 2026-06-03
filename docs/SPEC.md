@@ -94,7 +94,7 @@ Chụp/Upload ảnh → Remove BG → AI Auto-tag → Digital Closet → AI Sugg
 
 #### 3.5 Digital Closet
 - Grid view 2-3 cột, ảnh đã remove-bg trên nền xám nhạt
-- Filter/sort theo: type, color, occasion, season
+- Filter/sort theo: type, occasion, season (filter theo color → post-MVP)
 - Search bằng text (full-text search trên tags)
 - Item detail: ảnh full, tất cả tags, lịch sử mặc
 - Swipe to archive (không xóa, chỉ ẩn)
@@ -273,14 +273,16 @@ POST   /api/items/upload          # Upload + queue processing
 GET    /api/items                 # List closet items (with filters)
 GET    /api/items/{id}            # Item detail + processing status
 PATCH  /api/items/{id}/tags       # Edit tags
-DELETE /api/items/{id}            # Archive item
+DELETE /api/items/{id}            # Soft delete (set deleted_at) — ẩn vĩnh viễn khỏi closet
+POST   /api/items/{id}/archive    # Archive/unarchive (set is_archived) — ẩn tạm, vẫn trong closet
 POST   /api/items/{id}/retry      # Retry failed processing
 
-POST   /api/suggest/outfit        # Generate outfit suggestion
-GET    /api/weather               # Get current weather for user location
+POST   /api/suggest/outfit        # Generate outfit suggestion (synchronous — xem §9)
+GET    /api/suggest/weather       # Get current weather for user location
 
 POST   /api/outfits               # Save outfit (items qua outfit_items)
 GET    /api/outfits               # List saved outfits
+GET    /api/outfits/{id}          # Outfit detail
 PATCH  /api/outfits/{id}/items    # Thêm/bớt/reorder items trong outfit
 POST   /api/outfits/{id}/wear     # Log wearing — tạo wear_logs với items_snapshot
 POST   /api/outfits/{id}/feedback # Suggestion feedback — tạo suggestion_feedback (saved/worn/dismissed/disliked)
@@ -293,8 +295,8 @@ GET    /api/analytics/history     # Wear history calendar
 **API behavior**:
 - `POST /api/items/upload` trả `202 Accepted` với item/job ids ngay khi upload metadata thành công.
 - Frontend poll `GET /api/items/{id}` hoặc subscribe Supabase Realtime để cập nhật `processing_status`.
-- `DELETE /api/items/{id}` là soft delete/archive; hard delete chỉ dùng cho account deletion.
-- `POST /api/suggest/outfit` cache theo `(user_id, suggestion_date, context_hash)` — cùng ngày nhưng khác occasion/weather/closet sẽ tạo cache entry mới, không bị kẹt cache cũ.
+- `DELETE /api/items/{id}` là soft delete (set `deleted_at`, ẩn vĩnh viễn); `POST /api/items/{id}/archive` chỉ set `is_archived` (ẩn tạm khỏi closet, vẫn còn data). Hard delete chỉ dùng cho account deletion.
+- `POST /api/suggest/outfit` chạy **synchronous** trong request (xem §9): gate → cache lookup → Gemini → tạo outfits → trả về ngay. Cache theo `(user_id, suggestion_date, context_hash)` — cùng ngày nhưng khác occasion/weather/closet sẽ tạo cache entry mới, không bị kẹt cache cũ. Collage cho từng outfit generate song song + graceful degradation, không chặn response.
 
 ---
 
@@ -448,7 +450,7 @@ Chi tiết conventions, patterns, và rules: xem [`docs/backend-conventions.md`]
 - Thay đổi pricing / monetization logic
 
 ### Never do
-- Gọi AI API synchronously trong main request thread
+- Gọi AI API synchronously cho **batch image processing** (rembg + tagging) — phải chạy trên ARQ worker, không block UI. *Ngoại lệ có chủ đích*: `POST /api/suggest/outfit` chạy sync trong request vì là on-demand (user chờ kết quả ngay), được bảo vệ bằng cache + rate limit + timeout.
 - Lưu ảnh gốc không compressed (resize trước khi upload)
 - Collect location liên tục — chỉ lấy khi user request suggestion
 - Hard-code API keys trong code
@@ -511,7 +513,7 @@ Chi tiết conventions, patterns, và rules: xem [`docs/backend-conventions.md`]
 - [ ] `POST /api/outfits/{id}/feedback` — suggestion_feedback
 
 **Suggest feature**
-- [ ] `GET /api/weather` — OpenWeatherMap, nhận tọa độ từ mobile
+- [ ] `GET /api/suggest/weather` — OpenWeatherMap, nhận tọa độ từ mobile
 - [ ] `POST /api/suggest/outfit` — gate check (< 15 items → 403 CLOSET_NOT_READY), Gemini + weather context + lịch sử outfit
 - [ ] `daily_suggestion_cache`: cache theo `(user_id, date, context_hash)`
 
