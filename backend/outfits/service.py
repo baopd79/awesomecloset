@@ -1,3 +1,4 @@
+from typing import Any
 from uuid import UUID
 
 from loguru import logger
@@ -9,15 +10,29 @@ from backend.core.storage import StorageClient
 from backend.items.models import ClothingItem, ProcessingStatus
 from backend.items.repository import ItemRepository
 from backend.outfits.collage import BUCKET, generate_collage
-from backend.outfits.models import Outfit, OutfitItem, OutfitItemRole
+from backend.outfits.models import (
+    FeedbackAction,
+    Outfit,
+    OutfitItem,
+    OutfitItemRole,
+    SuggestionFeedback,
+    WearLog,
+    _utcnow,
+)
 from backend.outfits.repository import OutfitRepository
 from backend.outfits.schemas import (
     CreateOutfitIn,
+    FeedbackIn,
+    FeedbackResponse,
     OutfitItemIn,
     OutfitItemResponse,
     OutfitResponse,
     PatchOutfitItemsIn,
+    WearLogResponse,
+    WearOutfitIn,
 )
+
+_RATING_WARNING_ACTIONS = {FeedbackAction.dismissed, FeedbackAction.disliked}
 
 
 class OutfitService:
@@ -95,6 +110,59 @@ class OutfitService:
         outfit = await self._generate_and_attach_collage(outfit, user_id, data.items, items_data)
 
         return await self._build_response(outfit, list(zip(data.items, items_data)))
+
+    async def log_wear(self, outfit_id: UUID, user_id: UUID, data: WearOutfitIn) -> WearLogResponse:
+        await self._get_or_raise(outfit_id, user_id)
+        outfit_items = await self._repo.list_outfit_items(outfit_id)
+
+        # Snapshot item data BEFORE writing — must be complete, not partial. Soft-deleted
+        # items (get_by_id filters deleted_at) are skipped from both snapshot and wear bump.
+        snapshot: list[dict[str, Any]] = []
+        items_to_bump: list[ClothingItem] = []
+        for oi in outfit_items:
+            item = await self._item_repo.get_by_id(oi.item_id, user_id)
+            if item is None:
+                continue
+            snapshot.append(_item_snapshot(item))
+            items_to_bump.append(item)
+
+        worn_at = _utcnow()
+        wear_log = WearLog(
+            user_id=user_id,
+            outfit_id=outfit_id,
+            items_snapshot=snapshot,
+            rating=data.rating,
+        )
+        async with transaction(self._session):
+            wear_log = await self._repo.create_wear_log(wear_log)
+            for item in items_to_bump:
+                await self._item_repo.bump_wear(item, worn_at)
+
+        return WearLogResponse.model_validate(wear_log)
+
+    async def submit_feedback(
+        self, outfit_id: UUID, user_id: UUID, data: FeedbackIn
+    ) -> FeedbackResponse:
+        await self._get_or_raise(outfit_id, user_id)
+
+        if data.rating is not None and data.action in _RATING_WARNING_ACTIONS:
+            logger.warning(
+                "feedback_rating_with_negative_action outfit_id={} action={} rating={}",
+                outfit_id,
+                data.action.value,
+                data.rating,
+            )
+
+        feedback = SuggestionFeedback(
+            user_id=user_id,
+            outfit_id=outfit_id,
+            action=data.action,
+            rating=data.rating,
+        )
+        async with transaction(self._session):
+            feedback = await self._repo.create_feedback(feedback)
+
+        return FeedbackResponse.model_validate(feedback)
 
     # --- private helpers ---
 
@@ -197,6 +265,16 @@ class OutfitService:
             created_at=outfit.created_at,
             updated_at=outfit.updated_at,
         )
+
+
+def _item_snapshot(item: ClothingItem) -> dict[str, Any]:
+    """Item data captured at wear time — immutable record for analytics (SPEC §4)."""
+    return {
+        "item_id": str(item.id),
+        "type": item.type.value if item.type else None,
+        "colors": item.colors,
+        "style": [s.value for s in item.style] if item.style else None,
+    }
 
 
 def _warn_missing_role(items: list[OutfitItemIn]) -> None:

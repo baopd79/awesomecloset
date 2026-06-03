@@ -27,11 +27,11 @@ make fmt-fix          # ruff format
 
 ## Architecture
 
-**Stack**: FastAPI (Python 3.12) + Supabase (Postgres, Auth, Storage) + ARQ/Redis (background jobs) + React Native/Expo (mobile, not yet started).
+**Stack**: FastAPI (Python 3.12) + Supabase (Postgres, Auth, Storage) + ARQ/Redis (background jobs) + React Native/Expo (mobile, `mobile/` directory).
 
 **Deployment**: Two processes from the same codebase — API server (`backend.main:app`) and ARQ worker (`backend.workers.main.WorkerSettings`).
 
-**Feature status**: `items` is the only implemented feature. `suggest`, `outfits`, and `analytics` are empty stubs planned for post-MVP. `design_handoff_awesomecloset/` contains JSX prototypes and mockups (not wired to the backend).
+**Feature status**: `items` and `outfits` are fully implemented. `suggest` has a `GET /api/suggest/weather` endpoint. `analytics` is an empty stub. `design_handoff_awesomecloset/` contains JSX prototypes (source of truth for UI — `README.md` for tokens, `app-*.jsx` for screen layouts).
 
 ### Backend Feature Layout
 
@@ -137,3 +137,53 @@ When logging wear events, the service must fetch and snapshot all item data befo
 Required `.env` keys: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `SECRET_KEY`, `OPENWEATHERMAP_API_KEY`. Optional: `REDIS_URL` (default `redis://localhost:6379`), `REMOVEBG_API_KEY`, `GEMINI_TAGGING_MODEL`, `GEMINI_SUGGESTION_MODEL`.
 
 AI models are configured via env vars (`GEMINI_TAGGING_MODEL`, `GEMINI_SUGGESTION_MODEL`) — never hard-coded. Gemini tagging prompts must pass taxonomy enum values explicitly; AI must not invent tags outside the defined enums. All AI prompts are defined in a `prompts.py` file inside the feature folder (e.g. `backend/items/prompts.py`), not inline in service or task code.
+
+## Mobile (Expo SDK 56)
+
+```bash
+cd mobile
+npm install
+cp .env.local.example .env.local   # fill in EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY, EXPO_PUBLIC_API_URL
+
+npx expo start          # dev server
+# press 'i' → iOS simulator, 'r' → full reload
+
+npm run ts              # TypeScript check (no emit)
+npx expo run:ios        # build dev client for real device (first run ~10 min)
+```
+
+Expo Go does not support SDK 56 — use `npx expo run:ios` for device testing.
+Always use `npx expo install <package>` (not `npm install`) to get SDK-compatible versions.
+
+### Mobile Architecture
+
+Expo Router v3 — `app/` folder is the routing root. File = route.
+
+```
+app/
+  _layout.tsx          # root layout: font load + auth guard + redirect
+  (auth)/              # login/register screens
+  (onboarding)/
+  (tabs)/
+    _layout.tsx        # custom tab bar
+    index.tsx          # "Hôm nay" tab
+    closet.tsx
+    add.tsx
+    analytics.tsx
+
+components/
+  ui/                  # reusable primitives (Icon, PrimaryBtn, GhostBtn, Kicker)
+hooks/                 # useSession, useRealtimeItem, useCloset
+lib/
+  api.ts               # ALL HTTP calls — never call fetch directly in a screen
+  supabase.ts          # Supabase client
+  theme.ts             # design tokens: T.ink, T.accent, T.surface, T.bg, T.r, T.rsm, …
+```
+
+**Design tokens**: import `T` from `@/lib/theme` — no hardcoded hex strings. Fonts: `PlayfairDisplay_700Bold` (headings) and `BeVietnamPro_400Regular/600SemiBold/700Bold` (body). Both must be loaded in root layout before any render.
+
+**File upload**: use `expo-file-system/legacy` `uploadAsync` — `FormData { uri, name, type }` is not supported in RN 0.73+.
+
+**Supabase Realtime**: subscribe to `postgres_changes` on the table name from `__tablename__` (not the API route). Table must be added to the `supabase_realtime` publication first.
+
+**Prototype translation**: prototype files use HTML/CSS — map `<div>` → `<View>`, `<span>` → `<Text>`, `onClick` → `onPress`, `var(--radius-sm)` → `T.rsm`, CSS `position absolute` with `inset: 0` → `{ top:0, left:0, right:0, bottom:0 }`. `gap` is supported from RN 0.71+.

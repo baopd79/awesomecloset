@@ -162,6 +162,13 @@ class ItemRepository:
         self._session.add(item)
         await self._session.flush()
 
+    async def bump_wear(self, item: ClothingItem, worn_at: datetime) -> None:
+        """Increment denormalized wear counters when an outfit containing this item is worn."""
+        item.wear_count += 1
+        item.last_worn_at = worn_at
+        self._session.add(item)
+        await self._session.flush()
+
 
 def _cursor_val(item: ClothingItem, sort_by: SortBy) -> Any:
     if sort_by == SortBy.created_at:

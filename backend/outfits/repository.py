@@ -4,7 +4,7 @@ from sqlalchemy import delete
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from backend.outfits.models import Outfit, OutfitItem
+from backend.outfits.models import Outfit, OutfitItem, SuggestionFeedback, WearLog
 
 
 class OutfitRepository:
@@ -55,3 +55,15 @@ class OutfitRepository:
         for oi in new_items:
             self._session.add(oi)
         await self._session.flush()
+
+    async def create_wear_log(self, wear_log: WearLog) -> WearLog:
+        self._session.add(wear_log)
+        await self._session.flush()
+        await self._session.refresh(wear_log)
+        return wear_log
+
+    async def create_feedback(self, feedback: SuggestionFeedback) -> SuggestionFeedback:
+        self._session.add(feedback)
+        await self._session.flush()
+        await self._session.refresh(feedback)
+        return feedback
