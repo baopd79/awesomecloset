@@ -37,17 +37,20 @@ class OpenWeatherMapClient(WeatherClient):
         self._api_key = api_key
 
     async def get_current(self, lat: float, lng: float) -> WeatherResponse:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                OWM_URL,
-                params={
-                    "lat": lat,
-                    "lon": lng,  # OWM uses "lon" as query param name
-                    "appid": self._api_key,
-                    "units": "metric",
-                    "lang": "vi",
-                },
-            )
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(
+                    OWM_URL,
+                    params={
+                        "lat": lat,
+                        "lon": lng,  # OWM uses "lon" as query param name
+                        "appid": self._api_key,
+                        "units": "metric",
+                        "lang": "vi",
+                    },
+                )
+        except httpx.HTTPError:
+            raise AppException(code="WEATHER_UNAVAILABLE", status=502)
         if resp.status_code != 200:
             raise AppException(code="WEATHER_UNAVAILABLE", status=502)
         try:
