@@ -22,11 +22,11 @@ Build một AI personal closet app mobile-first cho người dùng Việt Nam. C
 | 11 | Outfits + collage | ✅ #21 |
 | 12 | Wear logging + feedback | ✅ #22 |
 | 13 | Weather endpoint (`GET /api/suggest/weather`) | ✅ #20 |
-| 14 | Suggest endpoint + cache | ⏳ Next |
+| 14 | Suggest endpoint + cache | 🔨 feat/14-suggest (pending PR) |
 | 15 | Home + Outfit UI | ⏳ |
 | 16–21 | Analytics, gamification, push, deploy, EAS | ⏳ |
 
-Backend Phase 1 + 2 gần khép — còn **Task 14 (suggest)** để hoàn tất Phase 2 core AI loop; mobile còn **Task 15**.
+Backend Phase 1 + 2 gần khép — **Task 14 (suggest)** đã implement trên `feat/14-suggest` (chờ merge), khép Phase 2 core AI loop; mobile còn **Task 15**.
 
 ## Git Workflow
 
@@ -545,13 +545,15 @@ Git repo + CI (GitHub Actions)
 
 **Quyết định triển khai (chốt 2026-06-04):**
 - **Synchronous** trong request thread (không async qua ARQ) — suggestion là on-demand, user chờ kết quả ngay. Bảo vệ bằng cache + rate limit + timeout cho Gemini call. (Cập nhật SPEC §9 cho khớp ngoại lệ này.)
-- Collage 2-3 outfit generate **song song** (`asyncio.gather`) + graceful degradation (đã có từ Task 11) — không chặn response. Nếu đo latency thực tế kém → tách collage sang ARQ ở follow-up.
+- Collage 2-3 outfit generate **tuần tự** (KHÔNG `asyncio.gather`) — `AsyncSession` không an toàn concurrent, DB write của các collage sẽ interleave. (Sửa so với dự kiến ban đầu là song song.) Vẫn graceful degradation từ Task 11. Nếu đo latency thực tế kém → tách collage sang ARQ ở follow-up.
 - **slowapi chưa được wire** vào `main.py` (mới chỉ có trong deps) — Task 14 phải dựng `Limiter` + exception handler + decorator.
 - `daily_suggestion_cache` cần model SQLModel mới (bảng đã có sẵn từ Task 1).
 - Gemini suggestion client: tạo **ABC riêng trong `suggest/`** (không tái dùng code tagging coupled trong `workers/ai_pipeline.py`), inject để mock test. Prompt đặt trong `suggest/prompts.py`.
+- **Cache lưu Postgres, không Redis**: cache là con trỏ tới `outfit_ids` đã persist ở bảng `outfits` → một nguồn sự thật, ghi cùng transaction với outfit, survive restart, self-healing (cache trỏ outfit đã xóa → regenerate). Redis dành cho rate limit. Cache hit vẫn re-fetch để ký signed URL mới.
+- **Rate limit** đếm *mọi* request tới endpoint (cả cache-hit và cả request 403 gate), không chỉ lần gọi Gemini. Key theo `user_id`, storage in-memory cho single instance MVP → Redis-backed khi scale (Task 19).
 
 **Acceptance criteria:**
-- [ ] Gate: đếm items `processing_status = ready AND deleted_at IS NULL`. Nếu < 15 → `403 CLOSET_NOT_READY {items_count, items_required: 15}`
+- [ ] Gate: đếm items `processing_status = ready AND deleted_at IS NULL AND is_archived = false`. Nếu < 15 → `403 CLOSET_NOT_READY {items_count, items_required: 15}`
 - [ ] Cache lookup: tìm `daily_suggestion_cache` theo `(user_id, today, context_hash)`. Cache hit → trả ngay, không gọi Gemini
 - [ ] Cache miss → build prompt với: thumbnail tags của closet, weather context, occasion, 7 ngày wear history
 - [ ] Gemini trả 2-3 outfits → validate → tạo `outfits` records + `outfit_items` + generate collage
