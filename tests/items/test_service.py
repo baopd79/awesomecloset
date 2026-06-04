@@ -205,6 +205,42 @@ async def test_delete_item_calls_soft_delete():
     repo.soft_delete.assert_awaited_once_with(item)
 
 
+# --- archive / unarchive ---
+
+
+@pytest.mark.asyncio
+async def test_archive_then_unarchive_sets_flag_each_way():
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    item = ClothingItem(id=item_id, user_id=user_id, is_archived=False)
+
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=item)
+    repo.update = AsyncMock(side_effect=lambda i: i)
+    svc = _make_service(repo=repo)
+
+    archived = await svc.archive_item(item_id, user_id)
+    assert archived.is_archived is True
+
+    unarchived = await svc.unarchive_item(item_id, user_id)
+    assert unarchived.is_archived is False
+
+
+@pytest.mark.asyncio
+async def test_unarchive_is_idempotent_on_already_active_item():
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    item = ClothingItem(id=item_id, user_id=user_id, is_archived=False)
+
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=item)
+    repo.update = AsyncMock(side_effect=lambda i: i)
+    svc = _make_service(repo=repo)
+
+    result = await svc.unarchive_item(item_id, user_id)
+    assert result.is_archived is False
+
+
 # --- retry_processing ---
 
 

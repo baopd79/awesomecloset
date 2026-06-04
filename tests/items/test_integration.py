@@ -335,6 +335,47 @@ async def test_service_list_items_signs_thumbnail_url(repo, db_session, test_use
     mock_storage.get_signed_urls_batch.assert_called_once()
 
 
+# --- service-level: archive / unarchive roundtrip ---
+
+
+@pytest.mark.asyncio
+async def test_archive_unarchive_archive_converges(repo, db_session, test_user_id):
+    """archive → unarchive → archive must converge to is_archived=True with no conflict."""
+    item = ClothingItem(user_id=test_user_id, processing_status=ProcessingStatus.ready)
+    async with transaction(db_session):
+        created = await repo.create(item)
+
+    mock_storage = MagicMock()
+    mock_storage.get_signed_urls_batch = AsyncMock(return_value={})
+    svc = ItemService(db_session, repo, mock_storage, MagicMock())
+
+    await svc.archive_item(created.id, test_user_id)
+    await svc.unarchive_item(created.id, test_user_id)
+    final = await svc.archive_item(created.id, test_user_id)
+    assert final.is_archived is True
+
+    # The active (non-archived) listing must not include it; the archived listing must.
+    active, _ = await repo.list_items(test_user_id, is_archived=False)
+    archived, _ = await repo.list_items(test_user_id, is_archived=True)
+    assert created.id not in {i.id for i in active}
+    assert created.id in {i.id for i in archived}
+
+
+@pytest.mark.asyncio
+async def test_soft_deleted_item_never_listed_in_archive(repo, db_session, test_user_id):
+    """A soft-deleted item is filtered out of the archive listing (can't be restored)."""
+    item = ClothingItem(
+        user_id=test_user_id, processing_status=ProcessingStatus.ready, is_archived=True
+    )
+    async with transaction(db_session):
+        created = await repo.create(item)
+    async with transaction(db_session):
+        await repo.soft_delete(created)
+
+    archived, _ = await repo.list_items(test_user_id, is_archived=True)
+    assert created.id not in {i.id for i in archived}
+
+
 # --- service-level retry guard ---
 
 

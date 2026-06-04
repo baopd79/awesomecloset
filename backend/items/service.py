@@ -141,6 +141,14 @@ class ItemService:
         await self._sign_items([item])
         return item
 
+    async def unarchive_item(self, item_id: UUID, user_id: UUID) -> ClothingItem:
+        item = await self._get_or_raise(item_id, user_id)
+        async with transaction(self._session):
+            item.is_archived = False
+            item = await self._repo.update(item)
+        await self._sign_items([item])
+        return item
+
     async def delete_item(self, item_id: UUID, user_id: UUID) -> None:
         item = await self._get_or_raise(item_id, user_id)
         async with transaction(self._session):

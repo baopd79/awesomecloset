@@ -274,7 +274,8 @@ GET    /api/items                 # List closet items (with filters)
 GET    /api/items/{id}            # Item detail + processing status
 PATCH  /api/items/{id}/tags       # Edit tags
 DELETE /api/items/{id}            # Soft delete (set deleted_at) — ẩn vĩnh viễn khỏi closet
-POST   /api/items/{id}/archive    # Archive/unarchive (set is_archived) — ẩn tạm, vẫn trong closet
+POST   /api/items/{id}/archive    # Archive (set is_archived=true) — ẩn tạm, vẫn trong closet
+POST   /api/items/{id}/unarchive  # Khôi phục (set is_archived=false) — màn Archive
 POST   /api/items/{id}/retry      # Retry failed processing
 
 POST   /api/suggest/outfit        # Generate outfit suggestion (synchronous — xem §9)
