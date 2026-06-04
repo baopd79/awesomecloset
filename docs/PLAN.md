@@ -23,7 +23,7 @@ Build một AI personal closet app mobile-first cho người dùng Việt Nam. C
 | 12 | Wear logging + feedback | ✅ #22 |
 | 13 | Weather endpoint (`GET /api/suggest/weather`) | ✅ #20 |
 | 14 | Suggest endpoint + cache | 🔨 feat/14-suggest (pending PR) |
-| 15 | Home + Outfit UI | ⏳ |
+| 15 | Home + Outfit UI | 🔨 feat/15-home-outfit-ui (pending PR) |
 | 16–21 | Analytics, gamification, push, deploy, EAS | ⏳ |
 
 Backend Phase 1 + 2 gần khép — **Task 14 (suggest)** đã implement trên `feat/14-suggest` (chờ merge), khép Phase 2 core AI loop; mobile còn **Task 15**.
