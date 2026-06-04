@@ -22,9 +22,10 @@ Build một AI personal closet app mobile-first cho người dùng Việt Nam. C
 | 11 | Outfits + collage | ✅ #21 |
 | 12 | Wear logging + feedback | ✅ #22 |
 | 13 | Weather endpoint (`GET /api/suggest/weather`) | ✅ #20 |
-| 14 | Suggest endpoint + cache | 🔨 feat/14-suggest (pending PR) |
-| 15 | Home + Outfit UI | 🔨 feat/15-home-outfit-ui (pending PR) |
-| 16–21 | Analytics, gamification, push, deploy, EAS | ⏳ |
+| 14 | Suggest endpoint + cache | ✅ #24 |
+| 15 | Home + Outfit UI | ✅ #25 |
+| 16 | Analytics (server-side + UI) | 🔨 feat/16-analytics (pending PR) |
+| 17–21 | Gamification, push, deploy, EAS | ⏳ |
 
 Backend Phase 1 + 2 gần khép — **Task 14 (suggest)** đã implement trên `feat/14-suggest` (chờ merge), khép Phase 2 core AI loop; mobile còn **Task 15**.
 
@@ -631,14 +632,15 @@ Git repo + CI (GitHub Actions)
 **Description:** 3 analytics endpoints tính toán server-side từ `wear_logs` và `clothing_items`. Analytics UI hiển thị kết quả đã aggregate.
 
 **Acceptance criteria:**
-- [ ] `GET /api/analytics/colors` trả top colors theo `wear_count` của items
-- [ ] `GET /api/analytics/unworn` trả items `wear_count = 0 AND processing_status = ready AND deleted_at IS NULL`
-- [ ] `GET /api/analytics/history` trả calendar data: `[{date, outfit_id, collage_url}]` cho 30 ngày gần nhất
-- [ ] Analytics UI: bar chart màu (top 5), unworn items grid, calendar view
+- [x] `GET /api/analytics/colors` trả top 5 colors theo `wear_count` của items (gom theo tên màu, hex đại diện = item mặc nhiều nhất)
+- [x] `GET /api/analytics/unworn` trả items `wear_count = 0 AND processing_status = ready AND deleted_at IS NULL AND is_archived = false` (thumbnail ký lúc đọc)
+- [x] `GET /api/analytics/history` trả calendar data: `[{date, outfit_id, collage_url, occasion}]` cho 30 ngày gần nhất, dedup 1 outfit/ngày (lần mặc mới nhất)
+- [x] `GET /api/analytics/summary` trả `{items_count, outfits_count, worn_days}` cho hàng stat cards (thêm so với spec — giữ nguyên tắc SPEC 3.9: client chỉ nhận số đã aggregate)
+- [x] Analytics UI: bar chart màu (top 5), unworn items strip (scroll ngang), calendar view tô màu theo occasion
 
 **Verification:**
-- [ ] `pytest tests/analytics/` pass (seed data → verify aggregation chính xác)
-- [ ] Seed: mặc outfit A (có áo đỏ) 3 lần → màu đỏ xuất hiện top 1 analytics
+- [x] `pytest tests/analytics/` pass (6 unit + 4 integration, aggregation chính xác)
+- [x] Seed: mặc outfit A (có áo đỏ) 3 lần → màu đỏ xuất hiện top 1 analytics
 
 **Dependencies:** Task 12
 

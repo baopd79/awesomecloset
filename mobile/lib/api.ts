@@ -273,3 +273,55 @@ export async function submitFeedback(
   if (!response.ok) throw new Error(`Feedback failed (${response.status})`);
   return response.json() as Promise<FeedbackResponse>;
 }
+
+// --- Analytics ---------------------------------------------------------------
+
+export interface ColorStat {
+  name: string;
+  hex: string;
+  count: number;
+}
+
+export interface AnalyticsSummary {
+  items_count: number;
+  outfits_count: number;
+  worn_days: number;
+}
+
+export interface UnwornItem {
+  id: string;
+  type: string | null;
+  thumbnail_url: string | null;
+}
+
+export interface HistoryEntry {
+  date: string; // ISO date (YYYY-MM-DD)
+  outfit_id: string;
+  collage_url: string | null;
+  occasion: string | null;
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`${path} failed (${response.status})`);
+  return response.json() as Promise<T>;
+}
+
+export function getAnalyticsSummary(): Promise<AnalyticsSummary> {
+  return getJson<AnalyticsSummary>('/api/analytics/summary');
+}
+
+export function getColorStats(): Promise<{ colors: ColorStat[] }> {
+  return getJson<{ colors: ColorStat[] }>('/api/analytics/colors');
+}
+
+export function getUnworn(): Promise<{ items: UnwornItem[] }> {
+  return getJson<{ items: UnwornItem[] }>('/api/analytics/unworn');
+}
+
+export function getHistory(): Promise<{ days: HistoryEntry[] }> {
+  return getJson<{ days: HistoryEntry[] }>('/api/analytics/history');
+}
