@@ -287,9 +287,10 @@ PATCH  /api/outfits/{id}/items    # Thêm/bớt/reorder items trong outfit
 POST   /api/outfits/{id}/wear     # Log wearing — tạo wear_logs với items_snapshot
 POST   /api/outfits/{id}/feedback # Suggestion feedback — tạo suggestion_feedback (saved/worn/dismissed/disliked)
 
-GET    /api/analytics/colors      # Color breakdown
+GET    /api/analytics/summary     # Counts: items / outfits / worn days
+GET    /api/analytics/colors      # Color breakdown (top 5 by wear_count)
 GET    /api/analytics/unworn      # Items never worn
-GET    /api/analytics/history     # Wear history calendar
+GET    /api/analytics/history     # Wear history calendar (30d, 1 outfit/day)
 ```
 
 **API behavior**:
