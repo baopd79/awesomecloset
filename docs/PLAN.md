@@ -24,8 +24,9 @@ Build một AI personal closet app mobile-first cho người dùng Việt Nam. C
 | 13 | Weather endpoint (`GET /api/suggest/weather`) | ✅ #20 |
 | 14 | Suggest endpoint + cache | ✅ #24 |
 | 15 | Home + Outfit UI | ✅ #25 |
-| 16 | Analytics (server-side + UI) | 🔨 feat/16-analytics (pending PR) |
-| 17–21 | Gamification, push, deploy, EAS | ⏳ |
+| 16 | Analytics (server-side + UI) | ✅ #26 |
+| 17 | Gamification + Onboarding | 🔨 feat/17-gamification (pending PR) |
+| 18–21 | Push, deploy, EAS | ⏳ |
 
 Backend Phase 1 + 2 gần khép — **Task 14 (suggest)** đã implement trên `feat/14-suggest` (chờ merge), khép Phase 2 core AI loop; mobile còn **Task 15**.
 
@@ -662,10 +663,16 @@ Git repo + CI (GitHub Actions)
 **Description:** Progress bar unlock suggestion (dùng `items_count` từ API — không cần logic mới), streak counter, badge đầu tiên. Onboarding 3-bước cho user mới.
 
 **Acceptance criteria:**
-- [ ] Progress bar trên Home: `{items_count}/15 món đồ` — tự update khi upload thêm
-- [ ] Badge "Tủ đồ đầu tiên" hiển thị khi `items_count` đạt 15 lần đầu (one-time, lưu local hoặc `users.style_preferences`)
-- [ ] Streak counter: số ngày liên tiếp user xem suggestion — hiển thị trên Home
-- [ ] Onboarding 3 slides: "Chụp → AI tag → Mặc ngay" → chỉ show lần đầu (AsyncStorage flag)
+- [x] Progress bar trên Home: `{items_count}/15 món đồ` — tự update khi upload thêm (đọc `items_count` từ `GET /api/analytics/summary`, refetch on focus)
+- [x] Badge "Tủ đồ đầu tiên" hiển thị khi `items_count` đạt 15 lần đầu (one-time, cờ AsyncStorage `firstClosetBadge:<userId>`)
+- [x] Streak counter: số ngày liên tiếp user xem suggestion — hiển thị trên Home (AsyncStorage `streak:<userId>`, ghi khi `generate()` ra results)
+- [x] Onboarding 3 slides: "Chụp → AI tag → Mặc đẹp mỗi sáng" → chỉ show lần đầu (cờ `hasOnboarded` đã wired ở root layout)
+
+**Quyết định khi triển khai:**
+- **ThemeProvider refactor — hoãn**: prerequisite này phục vụ màn Appearance (runtime theme switching), không nằm trong 4 acceptance của Task 17. Giữ `T` static để tránh migrate ~20 file; sẽ làm khi thực sự build màn Appearance.
+- **Lưu state client-side** (AsyncStorage), không thêm backend.
+- **Garment SVG**: port `garments.jsx` → `components/ui/Garment.tsx` (6 kind dùng trong onboarding heroes).
+- **readyCount** lấy từ `/api/analytics/summary` (`items_count` = active+ready) — không thêm endpoint.
 
 **Verification:**
 - [ ] Upload item 15 → badge animation xuất hiện
@@ -674,15 +681,16 @@ Git repo + CI (GitHub Actions)
 
 **Dependencies:** Task 15
 
-**Files likely touched:**
-- `mobile/app/(tabs)/index.tsx`
-- `mobile/components/StreakBadge.tsx`
-- `mobile/components/OnboardingSlides.tsx`
-- `mobile/hooks/useStreak.ts`
+**Files touched:**
+- `mobile/app/(tabs)/index.tsx` (streak card + gate chủ động + badge modal)
+- `mobile/app/(onboarding)/index.tsx` (3 slides)
+- `mobile/components/StreakBadge.tsx`, `mobile/components/FirstClosetBadge.tsx`
+- `mobile/components/ui/Garment.tsx` (port từ prototype)
+- `mobile/hooks/useStreak.ts`, `mobile/hooks/useClosetMilestone.ts`
 
 **Estimated scope:** S
 
-**⚠️ Prerequisite — ThemeProvider refactor (do trước khi implement Appearance screen):**
+**⚠️ Prerequisite — ThemeProvider refactor (HOÃN — chỉ cần khi build màn Appearance, không thuộc acceptance Task 17):**
 
 Màn Appearance screen yêu cầu runtime theme switching. Hiện tại `T = buildTheme(DEFAULT_THEME)` là static singleton — không đổi được lúc chạy. Trước Task 17, cần refactor:
 

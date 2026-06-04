@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { FirstClosetBadge } from '@/components/FirstClosetBadge';
 import { OccasionSelector } from '@/components/OccasionSelector';
 import { OutfitCard } from '@/components/OutfitCard';
+import { StreakBadge } from '@/components/StreakBadge';
 import { SuggestionGateProgress } from '@/components/SuggestionGateProgress';
 import { WearRatingSheet } from '@/components/WearRatingSheet';
 import { WeatherBadge } from '@/components/WeatherBadge';
@@ -11,6 +13,8 @@ import { Icon } from '@/components/ui/Icon';
 import { Kicker } from '@/components/ui/Kicker';
 import { PrimaryBtn } from '@/components/ui/PrimaryBtn';
 import { submitFeedback, wearOutfit } from '@/lib/api';
+import { useClosetMilestone, CLOSET_REQUIRED } from '@/hooks/useClosetMilestone';
+import { useStreak } from '@/hooks/useStreak';
 import { useSuggest } from '@/hooks/useSuggest';
 import { T } from '@/lib/theme';
 
@@ -31,6 +35,8 @@ function todayLabel(): string {
 export default function HomeScreen() {
   const router = useRouter();
   const s = useSuggest();
+  const streak = useStreak();
+  const milestone = useClosetMilestone();
 
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
@@ -38,6 +44,14 @@ export default function HomeScreen() {
   const [wearSubmitting, setWearSubmitting] = useState(false);
 
   const visibleOutfits = s.outfits.filter((o) => !dismissedIds.has(o.id));
+
+  // Closet not yet ready → show the unlock progress proactively (not just on 403).
+  const locked = milestone.readyCount !== null && milestone.readyCount < CLOSET_REQUIRED;
+
+  // Record a "viewed suggestion" day for the streak whenever results appear.
+  useEffect(() => {
+    if (s.phase === 'results') void streak.recordView();
+  }, [s.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleSave(id: string) {
     setSavedIds((prev) => new Set(prev).add(id));
@@ -77,33 +91,59 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* weather */}
-        {s.weather && <WeatherBadge weather={s.weather} />}
+        {/* streak */}
+        <StreakBadge streak={streak.streak} week={streak.week} />
 
-        {/* context picker */}
-        <OccasionSelector
-          occasion={s.occasion}
-          onOccasion={s.setOccasion}
-          manualCondition={s.manualCondition}
-          onManualCondition={s.setManualCondition}
-        />
-
-        {s.needsManualWeather && (
-          <Text style={styles.notice}>
-            Không lấy được vị trí. Hãy chọn thời tiết thủ công ở trên rồi thử lại.
-          </Text>
+        {/* loading closet status */}
+        {milestone.readyCount === null && (
+          <View style={styles.centerBlock}>
+            <ActivityIndicator color={T.accent} />
+          </View>
         )}
 
-        <View style={styles.generateWrap}>
-          <PrimaryBtn
-            icon="spark"
-            onPress={s.generate}
-            disabled={s.phase === 'generating'}
-            style={styles.generateBtn}
-          >
-            {s.phase === 'generating' ? 'AI đang phối đồ…' : 'Tạo gợi ý'}
-          </PrimaryBtn>
-        </View>
+        {/* locked: closet under 15 ready items */}
+        {locked && (
+          <View style={styles.lockedWrap}>
+            <SuggestionGateProgress
+              count={milestone.readyCount ?? 0}
+              required={CLOSET_REQUIRED}
+              onAdd={() => router.navigate('/add')}
+            />
+          </View>
+        )}
+
+        {/* unlocked: full suggestion flow */}
+        {milestone.readyCount !== null && !locked && (
+          <>
+            {/* weather */}
+            {s.weather && <WeatherBadge weather={s.weather} />}
+
+            {/* context picker */}
+            <OccasionSelector
+              occasion={s.occasion}
+              onOccasion={s.setOccasion}
+              manualCondition={s.manualCondition}
+              onManualCondition={s.setManualCondition}
+            />
+
+            {s.needsManualWeather && (
+              <Text style={styles.notice}>
+                Không lấy được vị trí. Hãy chọn thời tiết thủ công ở trên rồi thử lại.
+              </Text>
+            )}
+
+            <View style={styles.generateWrap}>
+              <PrimaryBtn
+                icon="spark"
+                onPress={s.generate}
+                disabled={s.phase === 'generating'}
+                style={styles.generateBtn}
+              >
+                {s.phase === 'generating' ? 'AI đang phối đồ…' : 'Tạo gợi ý'}
+              </PrimaryBtn>
+            </View>
+          </>
+        )}
 
         {/* generating */}
         {s.phase === 'generating' && (
@@ -167,6 +207,8 @@ export default function HomeScreen() {
         onClose={() => setWearTarget(null)}
         onConfirm={handleConfirmWear}
       />
+
+      <FirstClosetBadge visible={milestone.showBadge} onClose={milestone.dismissBadge} />
     </SafeAreaView>
   );
 }
@@ -177,6 +219,7 @@ const styles = StyleSheet.create({
   greetingRow: { paddingHorizontal: 22, paddingTop: 6, paddingBottom: 2 },
   greeting: { fontFamily: 'PlayfairDisplay_700Bold', fontSize: 33, lineHeight: 36, color: T.ink, marginTop: 8, letterSpacing: -0.4 },
   notice: { fontFamily: 'BeVietnamPro_400Regular', fontSize: 13, color: T.danger, paddingHorizontal: 22, marginTop: 14 },
+  lockedWrap: { marginTop: 18 },
   generateWrap: { paddingHorizontal: 22, marginTop: 24 },
   generateBtn: { width: '100%' },
   centerBlock: { alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 32, paddingVertical: 40 },
