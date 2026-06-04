@@ -101,6 +101,16 @@ export async function archiveItem(itemId: string): Promise<ItemResponse> {
   return response.json() as Promise<ItemResponse>;
 }
 
+export async function unarchiveItem(itemId: string): Promise<ItemResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/items/${itemId}/unarchive`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`Unarchive failed (${response.status})`);
+  return response.json() as Promise<ItemResponse>;
+}
+
 export async function retryItem(itemId: string): Promise<ItemResponse> {
   const token = await getToken();
 

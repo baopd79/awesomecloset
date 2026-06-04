@@ -122,3 +122,100 @@ Cơ chế giống Strategy Pattern (interface + nhiều implementation + composi
 - **Strategy**: đổi *thuật toán/hành vi nghiệp vụ*, thường swap lúc runtime. → đặt tên `...Strategy`, `...Policy`.
 
 **Quy tắc:** thấy class hạ tầng có ABC → mặc định nó theo Ports & Adapters. Inject interface vào service, instantiate adapter ở composition root (router), không bao giờ `new` adapter bên trong service.
+
+---
+
+## Transaction boundary qua helper (không để service tự `commit`)
+
+**Service sở hữu ranh giới transaction, nhưng không tự gọi `commit()`/`rollback()` rải rác** — bọc đoạn ghi DB trong context manager `transaction(self._session)`. Repository chỉ `flush()` + `refresh()`, không bao giờ commit.
+
+### Nguyên tắc
+
+Một thao tác nghiệp vụ thường gồm 2 loại bước có tính chất **trái ngược**:
+
+| Loại | Ví dụ | Tính chất |
+|---|---|---|
+| **Atomic, reversible** | insert/update nhiều bảng | rollback được → phải nằm *trong* transaction |
+| **Side-effect bất khả nghịch** | enqueue ARQ job, gọi API ngoài, xoá file storage | rollback **không** undo được → phải nằm *ngoài* transaction, sau khi commit chắc chắn |
+
+Helper `transaction()` biến ranh giới giữa hai loại này thành **một khối `with` nhìn thấy bằng mắt**, đồng thời gom logic commit/rollback vào một chỗ để không method nào quên.
+
+### Code trong repo
+
+**Bước 1 — helper.** Commit khi thoát sạch, rollback + re-raise khi có exception ([`core/database.py`](../backend/core/database.py)):
+
+```python
+@asynccontextmanager
+async def transaction(session: AsyncSession):
+    # Commits on clean exit, rolls back on any exception.
+    try:
+        yield
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
+```
+
+`get_db` yield session **không** có transaction đang mở — ranh giới do service quản qua helper, không dùng `async with session.begin()` (xung đột asyncpg autobegin).
+
+**Bước 2 — repository chỉ flush + refresh, không commit.** `flush()` đẩy data xuống DB và lấy về id/default/trigger; `refresh()` nạp lại object → caller có object đầy đủ **trước** commit ([`items/repository.py`](../backend/items/repository.py)):
+
+```python
+async def create(self, item: ClothingItem) -> ClothingItem:
+    self._session.add(item)
+    await self._session.flush()
+    await self._session.refresh(item)
+    return item
+```
+
+**Bước 3 — service bọc ghi DB trong `with`, đặt side-effect bất khả nghịch NGOÀI khối** ([`items/service.py`](../backend/items/service.py)):
+
+```python
+try:
+    async with transaction(self._session):
+        item = await self._repo.create(item)   # commit đóng ở cuối khối
+except Exception:
+    try:
+        await self._storage.delete(BUCKET, storage_path)  # dọn file đã upload, best-effort
+    except Exception:
+        pass
+    raise
+
+# Side-effect KHÔNG reversible — chỉ chạy sau khi DB commit chắc chắn:
+try:
+    await self._arq.enqueue_job("process_item", str(item.id), _job_id=_job_id(item.id))
+except Exception as exc:
+    async with transaction(self._session):                 # enqueue lỗi → đánh dấu failed để retry
+        await self._repo.update_status(item, ProcessingStatus.failed, error=str(exc))
+    raise
+```
+
+Vì repo đã `flush()`, ta dùng được `item.id` ngay trong/sau khối mà không cần đợi commit.
+
+### So sánh: vì sao KHÔNG để service tự `commit()`
+
+Pattern phổ biến khác — service tự gọi `commit`/`refresh` inline:
+
+```python
+# ❌ Pattern service tự commit
+created = await self.property_repo.create(prop)
+for r in rooms_data:
+    await self.room_repo.create(Room(**r.model_dump(), property_id=created.id))
+await self.session.commit()        # nếu vòng for lỗi → dòng này không chạy
+await self.session.refresh(created)
+```
+
+| Điểm yếu của pattern tự-commit | Pattern helper của project |
+|---|---|
+| **Thiếu rollback.** Lỗi giữa chừng → `commit` bị skip, session còn transaction dở (asyncpg autobegin) → request sau dùng lại connection đó dính lỗi *"transaction already in progress"*. Phải tự thêm `try/except/rollback` ở **mọi** method, dễ quên. | Rollback nằm trong helper → **không thể quên**, mọi method đồng nhất. |
+| **Ranh giới atomic mờ.** `commit()` là một dòng lẫn giữa thân hàm; khó nhìn ra "đoạn nào atomic", dễ vô tình đặt side-effect (enqueue/gọi API) **trước** commit. | Khối `with` vẽ ranh giới rõ; side-effect bất khả nghịch buộc nằm ngoài khối → đúng thứ tự. |
+| **`refresh` sau commit = thừa round-trip + I/O ngoài ranh giới.** | `refresh` trong repo (sau `flush`, trước commit) → object đủ data sớm, không tốn round-trip thừa. |
+| **Repo và service tranh nhau quyền commit** → không rõ ai sở hữu transaction. | Repo thuần query (`flush`/`refresh`); service sở hữu ranh giới. Vai trò tách bạch. |
+
+### Vì sao làm vậy
+
+- **Không thể quên rollback** → tránh nguyên một lớp bug "transaction dở dang" trên asyncpg.
+- **Phân định reversible vs bất khả nghịch** thành cấu trúc code nhìn thấy được, không phải quy ước ngầm.
+- **Repo có thể tái dùng** trong nhiều transaction khác nhau vì nó không tự đóng transaction — service ghép nhiều thao tác repo vào *một* `with` khi cần atomic chung.
+
+**Quy tắc:** ghi DB → bọc trong `async with transaction(self._session)`. Repo chỉ `flush`/`refresh`, không `commit`. Side-effect bất khả nghịch (ARQ, API ngoài, xoá storage) đặt **sau** khối, kèm xử lý lỗi để user retry được. Không bao giờ `async with session.begin()`.

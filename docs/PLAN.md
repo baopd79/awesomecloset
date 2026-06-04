@@ -25,7 +25,8 @@ Build một AI personal closet app mobile-first cho người dùng Việt Nam. C
 | 14 | Suggest endpoint + cache | ✅ #24 |
 | 15 | Home + Outfit UI | ✅ #25 |
 | 16 | Analytics (server-side + UI) | ✅ #26 |
-| 17 | Gamification + Onboarding | 🔨 feat/17-gamification (pending PR) |
+| 17 | Gamification + Onboarding | ✅ #27 |
+| 22 | Profile + Archive (Extras) | 🔨 feat/22-profile-archive (pending PR) |
 | 18–21 | Push, deploy, EAS | ⏳ |
 
 Backend Phase 1 + 2 gần khép — **Task 14 (suggest)** đã implement trên `feat/14-suggest` (chờ merge), khép Phase 2 core AI loop; mobile còn **Task 15**.
@@ -728,6 +729,35 @@ Màn Appearance screen yêu cầu runtime theme switching. Hiện tại `T = bui
 - `mobile/app/(tabs)/index.tsx`
 
 **Estimated scope:** S
+
+---
+
+### Task 22: Profile + Archive (Extras)
+
+**Description:** Màn Profile (hồ sơ + **đăng xuất** — app trước đó chưa có logout) và màn Archive (đồ đã lưu trữ + khôi phục). Dựng theo `app-profile.jsx` + `app-settings.jsx`.
+
+**Acceptance criteria:**
+- [x] `POST /api/items/{id}/unarchive` — set `is_archived=false`, ký URL, trả `ItemResponse`
+- [x] Màn Profile: avatar (chữ cái đầu email), email + "Thành viên từ …", 3 stat (món/outfit từ `/analytics/summary`, streak), Bộ sưu tập (Archive; "Outfit đã lưu" tạm "Sắp ra mắt"), **Đăng xuất** (`supabase.auth.signOut()` → root layout redirect về `(auth)`)
+- [x] Màn Archive: list `is_archived=true`, nút Khôi phục mỗi món (optimistic), empty state
+- [x] Lối vào Profile: nút avatar trên header Home → `/profile`
+- [x] `useCloset` refetch-on-focus → restore từ Archive đồng bộ về Closet (không lệch list)
+
+**Verification:**
+- [x] `pytest tests/items/` pass — gồm `archive → unarchive → archive` hội tụ + đồ soft-deleted không lọt vào Archive
+- [x] tsc xanh
+
+**Quyết định (chốt với user):**
+- **Appearance + ThemeProvider refactor — bỏ** (không làm đợt này; `T` giữ static). 27 file đang dùng `T` static nên refactor runtime theme là task lớn riêng, rủi ro cao.
+- **Saved outfits — hoãn** (cần endpoint list-saved; mục trong Profile tạm "Sắp ra mắt").
+- Không conflict ở archive/unarchive: set giá trị tuyệt đối (idempotent), không phải toggle/counter.
+
+**Files touched:**
+- `backend/items/{router,service}.py`, `tests/items/{test_service,test_integration}.py`
+- `mobile/app/profile.tsx`, `mobile/app/archive.tsx`, `mobile/app/_layout.tsx`, `mobile/app/(tabs)/index.tsx`
+- `mobile/hooks/useCloset.ts`, `mobile/lib/api.ts`
+
+**Estimated scope:** S–M
 
 ---
 

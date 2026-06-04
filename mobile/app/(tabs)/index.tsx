@@ -10,6 +10,7 @@ import { SuggestionGateProgress } from '@/components/SuggestionGateProgress';
 import { WearRatingSheet } from '@/components/WearRatingSheet';
 import { WeatherBadge } from '@/components/WeatherBadge';
 import { Icon } from '@/components/ui/Icon';
+import { IconBtn } from '@/components/ui/IconBtn';
 import { Kicker } from '@/components/ui/Kicker';
 import { PrimaryBtn } from '@/components/ui/PrimaryBtn';
 import { submitFeedback, wearOutfit } from '@/lib/api';
@@ -89,6 +90,7 @@ export default function HomeScreen() {
             <Kicker>{todayLabel()}</Kicker>
             <Text style={styles.greeting}>{greeting()}</Text>
           </View>
+          <IconBtn name="user" onPress={() => router.push('/profile')} />
         </View>
 
         {/* streak */}
@@ -216,7 +218,14 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.bg },
   scroll: { paddingBottom: 110 },
-  greetingRow: { paddingHorizontal: 22, paddingTop: 6, paddingBottom: 2 },
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 22,
+    paddingTop: 6,
+    paddingBottom: 2,
+  },
   greeting: { fontFamily: 'PlayfairDisplay_700Bold', fontSize: 33, lineHeight: 36, color: T.ink, marginTop: 8, letterSpacing: -0.4 },
   notice: { fontFamily: 'BeVietnamPro_400Regular', fontSize: 13, color: T.danger, paddingHorizontal: 22, marginTop: 14 },
   lockedWrap: { marginTop: 18 },
