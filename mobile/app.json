@@ -15,7 +15,14 @@
         {
           "faceIDPermission": "Allow AwesomeCloset to use Face ID to secure your account."
         }
-      ]
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "AwesomeCloset dùng vị trí để gợi ý outfit theo thời tiết hiện tại của bạn."
+        }
+      ],
+      "./plugins/withFollyCoroutinesFix"
     ],
     "ios": {
       "supportsTablet": false,

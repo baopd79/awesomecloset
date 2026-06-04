@@ -115,3 +115,161 @@ export async function retryItem(itemId: string): Promise<ItemResponse> {
   }
   return response.json();
 }
+
+// --- Outfits & suggestions ---------------------------------------------------
+
+export type OutfitItemRole =
+  | 'top'
+  | 'bottom'
+  | 'outerwear'
+  | 'shoes'
+  | 'bag'
+  | 'accessory';
+
+export interface OutfitItem {
+  item_id: string;
+  role: OutfitItemRole;
+  position: number;
+  thumbnail_url: string | null;
+  processed_url: string | null;
+  type: string | null;
+}
+
+export interface OutfitResponse {
+  id: string;
+  user_id: string;
+  name: string | null;
+  collage_url: string | null;
+  occasion: string | null;
+  ai_generated: boolean;
+  ai_reasoning: string | null;
+  items: OutfitItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WeatherResponse {
+  temp_c: number;
+  condition: string;
+  city: string;
+  icon: string;
+}
+
+export type ManualCondition = 'hot' | 'warm' | 'cool' | 'cold' | 'rainy';
+
+export interface SuggestResponse {
+  outfits: OutfitResponse[];
+  cached: boolean;
+}
+
+export interface SuggestRequest {
+  occasion?: string;
+  lat?: number;
+  lng?: number;
+  manual_condition?: ManualCondition;
+}
+
+/** Closet gate not yet met — surfaced from the 403 CLOSET_NOT_READY response. */
+export class ClosetNotReadyError extends Error {
+  constructor(
+    readonly itemsCount: number,
+    readonly itemsRequired: number,
+  ) {
+    super(`Closet not ready: ${itemsCount}/${itemsRequired}`);
+    this.name = 'ClosetNotReadyError';
+  }
+}
+
+export async function getWeather(
+  params: { lat: number; lng: number } | { manual_condition: ManualCondition },
+): Promise<WeatherResponse> {
+  const token = await getToken();
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => query.set(k, String(v)));
+  const response = await fetch(`${API_URL}/api/suggest/weather?${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`Weather failed (${response.status})`);
+  return response.json() as Promise<WeatherResponse>;
+}
+
+export async function suggestOutfit(body: SuggestRequest): Promise<SuggestResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/suggest/outfit`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 403) {
+    const data = (await response.json().catch(() => ({}))) as {
+      code?: string;
+      items_count?: number;
+      items_required?: number;
+    };
+    if (data.code === 'CLOSET_NOT_READY') {
+      throw new ClosetNotReadyError(data.items_count ?? 0, data.items_required ?? 15);
+    }
+  }
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Suggest failed (${response.status}): ${text}`);
+  }
+  return response.json() as Promise<SuggestResponse>;
+}
+
+export async function getOutfit(outfitId: string): Promise<OutfitResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/outfits/${outfitId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`Get outfit failed (${response.status})`);
+  return response.json() as Promise<OutfitResponse>;
+}
+
+export interface WearLogResponse {
+  id: string;
+  outfit_id: string;
+  worn_date: string;
+  items_snapshot: unknown[];
+  rating: number | null;
+  created_at: string;
+}
+
+export async function wearOutfit(
+  outfitId: string,
+  rating?: number,
+): Promise<WearLogResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/outfits/${outfitId}/wear`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating: rating ?? null }),
+  });
+  if (!response.ok) throw new Error(`Wear failed (${response.status})`);
+  return response.json() as Promise<WearLogResponse>;
+}
+
+export type FeedbackAction = 'saved' | 'worn' | 'dismissed' | 'disliked';
+
+export interface FeedbackResponse {
+  id: string;
+  outfit_id: string;
+  action: FeedbackAction;
+  rating: number | null;
+  created_at: string;
+}
+
+export async function submitFeedback(
+  outfitId: string,
+  action: FeedbackAction,
+  rating?: number,
+): Promise<FeedbackResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/outfits/${outfitId}/feedback`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, rating: rating ?? null }),
+  });
+  if (!response.ok) throw new Error(`Feedback failed (${response.status})`);
+  return response.json() as Promise<FeedbackResponse>;
+}

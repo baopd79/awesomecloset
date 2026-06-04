@@ -23,7 +23,9 @@ from backend.suggest.schemas import SuggestRequest, SuggestResponse, WeatherResp
 from backend.suggest.weather import WeatherClient, manual_weather
 
 ITEMS_REQUIRED = 15
-SUGGEST_TIMEOUT_S = 20.0
+# gemini-2.5-flash runs internal "thinking" before responding, so a single
+# 2-3 outfit generation lands around ~20s. Keep headroom above that boundary.
+SUGGEST_TIMEOUT_S = 40.0
 
 # Derive an outfit role from the garment type so the model only has to pick item ids.
 _TYPE_TO_ROLE: dict[ClothingType, OutfitItemRole] = {
@@ -141,7 +143,13 @@ class SuggestService:
         if data.manual_condition is not None:
             return manual_weather(data.manual_condition)
         if data.lat is not None and data.lng is not None:
-            return await self._weather.get_current(data.lat, data.lng)
+            # Best-effort: a slow/unavailable weather API must not fail or stall the
+            # whole suggestion — fall back to no weather context.
+            try:
+                return await self._weather.get_current(data.lat, data.lng)
+            except Exception as exc:
+                logger.warning("weather_resolve_failed lat={} lng={} error={}", data.lat, data.lng, exc)
+                return None
         return None
 
     async def _call_gemini(self, prompt: str):

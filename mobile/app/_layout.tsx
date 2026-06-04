@@ -64,7 +64,7 @@ export default function RootLayout() {
     const inAuth = segments[0] === '(auth)';
     const inOnboarding = segments[0] === '(onboarding)';
     const inTabs = segments[0] === '(tabs)';
-    const inApp = inTabs || segments[0] === 'item'; // screens pushed on top of tabs
+    const inApp = inTabs || segments[0] === 'item' || segments[0] === 'outfit'; // screens pushed on top of tabs
 
     if (!session) {
       if (!inAuth) router.replace('/(auth)');
