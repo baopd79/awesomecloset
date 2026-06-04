@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from sqlalchemy import delete
@@ -67,3 +68,11 @@ class OutfitRepository:
         await self._session.flush()
         await self._session.refresh(feedback)
         return feedback
+
+    async def list_recent_wear_logs(self, user_id: UUID, since: date) -> list[WearLog]:
+        stmt = select(WearLog).where(
+            WearLog.user_id == user_id,
+            WearLog.worn_date >= since,
+        )
+        result = await self._session.exec(stmt)
+        return list(result.all())

@@ -3,11 +3,13 @@ from contextlib import asynccontextmanager
 from arq import create_pool
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 from backend.core.auth import JWKSClient
 from backend.core.config import settings
 from backend.core.exceptions import AppException
 from backend.core.logging import request_logging_middleware
+from backend.core.ratelimit import limiter
 from backend.items.router import router as items_router
 from backend.outfits.router import router as outfits_router
 from backend.suggest.router import router as suggest_router
@@ -26,6 +28,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AwesomeCloset API", lifespan=lifespan)
 
+app.state.limiter = limiter
 app.middleware("http")(request_logging_middleware)
 app.include_router(items_router)
 app.include_router(outfits_router)
@@ -38,6 +41,11 @@ async def app_exception_handler(request: Request, exc: AppException):
         status_code=exc.status,
         content={"code": exc.code, **exc.extra},
     )
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(status_code=429, content={"code": "RATE_LIMITED"})
 
 
 @app.get("/health")

@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, or_, text
+from sqlalchemy import and_, func, or_, text
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -142,6 +142,32 @@ class ItemRepository:
             next_cursor = None
 
         return rows, next_cursor
+
+    def _active_ready_where(self, user_id: UUID) -> list[Any]:
+        # Items eligible for outfit suggestion: ready, not deleted, not archived.
+        return [
+            ClothingItem.user_id == user_id,
+            ClothingItem.deleted_at.is_(None),
+            ClothingItem.is_archived.is_(False),
+            ClothingItem.processing_status == ProcessingStatus.ready,
+        ]
+
+    async def count_active_ready(self, user_id: UUID) -> int:
+        stmt = (
+            select(func.count()).select_from(ClothingItem).where(*self._active_ready_where(user_id))
+        )
+        result = await self._session.exec(stmt)
+        return result.one()
+
+    async def list_active_ready(self, user_id: UUID, limit: int = 200) -> list[ClothingItem]:
+        stmt = (
+            select(ClothingItem)
+            .where(*self._active_ready_where(user_id))
+            .order_by(ClothingItem.created_at.desc())
+            .limit(limit)
+        )
+        result = await self._session.exec(stmt)
+        return list(result.all())
 
     async def update(self, item: ClothingItem) -> ClothingItem:
         self._session.add(item)

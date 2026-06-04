@@ -296,7 +296,11 @@ GET    /api/analytics/history     # Wear history calendar
 - `POST /api/items/upload` trả `202 Accepted` với item/job ids ngay khi upload metadata thành công.
 - Frontend poll `GET /api/items/{id}` hoặc subscribe Supabase Realtime để cập nhật `processing_status`.
 - `DELETE /api/items/{id}` là soft delete (set `deleted_at`, ẩn vĩnh viễn); `POST /api/items/{id}/archive` chỉ set `is_archived` (ẩn tạm khỏi closet, vẫn còn data). Hard delete chỉ dùng cho account deletion.
-- `POST /api/suggest/outfit` chạy **synchronous** trong request (xem §9): gate → cache lookup → Gemini → tạo outfits → trả về ngay. Cache theo `(user_id, suggestion_date, context_hash)` — cùng ngày nhưng khác occasion/weather/closet sẽ tạo cache entry mới, không bị kẹt cache cũ. Collage cho từng outfit generate song song + graceful degradation, không chặn response.
+- `POST /api/suggest/outfit` chạy **synchronous** trong request (xem §9): gate → cache lookup → Gemini → tạo outfits → trả về ngay. Cache theo `(user_id, suggestion_date, context_hash)` — cùng ngày nhưng khác occasion/weather/closet sẽ tạo cache entry mới, không bị kẹt cache cũ. Collage cho từng outfit generate **tuần tự** (không `asyncio.gather`) vì `AsyncSession` không an toàn concurrent — DB write của các collage sẽ interleave; nếu latency thực tế kém thì tách collage sang ARQ ở follow-up.
+  - **Gate count** = `processing_status = ready AND deleted_at IS NULL AND is_archived = false` — chỉ đếm item thực sự dùng được, tránh edge "đủ 15 nhưng toàn archived".
+  - **Cache lưu ở Postgres (`daily_suggestion_cache`), không Redis**: cache chỉ là *con trỏ* tới `outfit_ids` đã persist ở bảng `outfits` (collage + reasoning đã nằm sẵn ở DB) → để chung Postgres giữ một nguồn sự thật, ghi trong cùng transaction với outfit, và survive restart. Redis để dành cho rate limit (ephemeral counter). Cache hit vẫn re-fetch outfit để **ký signed URL mới** (URL hết hạn).
+  - **Self-healing**: nếu cache trỏ tới outfit đã bị xóa (`get_outfit` raise) → coi như miss → regenerate thay vì trả lỗi.
+  - **Rate limit `10/user/ngày`** đếm *mọi* request tới endpoint — bao gồm cả cache-hit và cả request bị 403 gate, không chỉ riêng lần thật sự gọi Gemini. Key theo `user_id` (fallback IP). Storage in-memory cho single instance MVP → chuyển Redis-backed khi scale ngang (Task 19).
 
 ---
 

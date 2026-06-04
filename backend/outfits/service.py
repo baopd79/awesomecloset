@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
@@ -7,7 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from backend.core.database import transaction
 from backend.core.exceptions import AppException
 from backend.core.storage import StorageClient
-from backend.items.models import ClothingItem, ProcessingStatus
+from backend.items.models import ClothingItem, ClothingOccasion, ProcessingStatus
 from backend.items.repository import ItemRepository
 from backend.outfits.collage import BUCKET, generate_collage
 from backend.outfits.models import (
@@ -163,6 +164,53 @@ class OutfitService:
             feedback = await self._repo.create_feedback(feedback)
 
         return FeedbackResponse.model_validate(feedback)
+
+    async def create_ai_outfit(
+        self,
+        user_id: UUID,
+        items_in: list[OutfitItemIn],
+        reasoning: str,
+        occasion: ClothingOccasion | None,
+        weather_context: dict[str, Any] | None,
+    ) -> OutfitResponse:
+        """Create an AI-generated outfit (ai_generated=True). Mirrors create_outfit but
+        carries the model's reasoning + weather snapshot. Reused by the suggest feature."""
+        items_data = await self._validate_items(user_id, items_in)
+
+        outfit = Outfit(
+            user_id=user_id,
+            occasion=occasion,
+            ai_generated=True,
+            ai_reasoning=reasoning,
+            weather_context=weather_context,
+        )
+        outfit_item_models = [
+            OutfitItem(
+                outfit_id=outfit.id,
+                item_id=oi.item_id,
+                role=oi.role,
+                position=oi.position,
+            )
+            for oi in items_in
+        ]
+        async with transaction(self._session):
+            outfit = await self._repo.create_outfit(outfit)
+            for oi in outfit_item_models:
+                await self._repo.create_outfit_item(oi)
+
+        outfit = await self._generate_and_attach_collage(outfit, user_id, items_in, items_data)
+        return await self._build_response(outfit, list(zip(items_in, items_data)))
+
+    async def recent_worn_item_ids(self, user_id: UUID, days: int = 7) -> list[str]:
+        """Item ids worn in the last `days` — fed to the suggestion prompt to avoid repeats."""
+        since = _utcnow().date() - timedelta(days=days)
+        logs = await self._repo.list_recent_wear_logs(user_id, since)
+        ids: set[str] = set()
+        for log in logs:
+            for snap in log.items_snapshot or []:
+                if isinstance(snap, dict) and snap.get("item_id"):
+                    ids.add(snap["item_id"])
+        return sorted(ids)
 
     # --- private helpers ---
 
