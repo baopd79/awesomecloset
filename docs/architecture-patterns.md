@@ -9,6 +9,52 @@ Các pattern & nguyên tắc thiết kế dùng trong codebase. Mỗi section l�
 
 ---
 
+## 3 trục: Folder structure vs Application architecture vs Domain modeling
+
+Một nhầm lẫn rất phổ biến: gộp "cách tổ chức folder", "kiến trúc ứng dụng" và "cách mô hình domain" làm một. Thực ra đây là **3 trục độc lập (orthogonal)** — chọn ở trục này không quyết định trục kia. Câu hỏi "project dùng architecture nào" vì thế có *3 câu trả lời* tuỳ đang hỏi trục nào.
+
+| Trục | Trả lời câu hỏi | Các lựa chọn |
+|---|---|---|
+| **1. Folder structure** (tổ chức file) | Xếp file *vật lý* ở đâu? | Layer-based · Feature-based · Vertical Slice |
+| **2. Application architecture** (kiến trúc phụ thuộc) | Quy tắc *phụ thuộc & ranh giới* giữa các phần? | N-Layer · Hexagonal (Ports & Adapters) · Clean/Onion |
+| **3. Domain modeling** (phương pháp thiết kế) | Mô hình *nghiệp vụ* thế nào? | DDD · Transaction Script · Anemic model |
+
+Có thể làm Clean Architecture với folder layer-based *hoặc* feature-based — cùng một kiến trúc, hai cách xếp file. Đổi cách xếp folder không làm đổi kiến trúc phụ thuộc.
+
+### 2 cái bẫy từ ngữ gây nhầm
+
+**Bẫy 1 — "Layer-based folder" ≠ "N-Layer architecture".** Trùng chữ "layer" nhưng khác trục:
+
+- *Layer-based folder* (trục 1) = gom file theo vai trò kỹ thuật: `controllers/`, `services/`, `repositories/`.
+- *N-Layer architecture* (trục 2) = quy tắc tầng A chỉ gọi tầng B, một chiều — **không** quan tâm file nằm folder nào.
+
+→ Hoàn toàn có thể chạy N-Layer architecture *bên trong* folder feature-based (chính là cách project này làm).
+
+**Bẫy 2 — DDD không thuộc trục 2.** DDD hay bị xếp chung nhóm với "N-Layer, Clean, Hexagonal", nhưng nó **không phải application architecture** mà là *phương pháp mô hình domain* (trục 3), vuông góc với kiến trúc. Vì khác trục nên người ta thường ghép **Hexagonal + DDD** — chúng bổ sung cho nhau, không thay thế nhau.
+
+### Project này đứng ở đâu trên mỗi trục
+
+```
+Trục 1 (folder)        → Feature-based / Vertical Slice
+                          items/, outfits/ — mỗi feature đủ tầng {models,repo,service,router,schemas}
+
+Trục 2 (architecture)  → N-Layer + Ports & Adapters cho hạ tầng
+                          Router→Service→Repo→Model; ABC cho storage/AI (xem section Ports & Adapters)
+
+Trục 3 (domain model)  → KHÔNG DDD; Anemic model + Transaction Script
+                          SQLModel chỉ chứa field, business logic nằm ở service
+```
+
+### Hình dung trực giác
+
+- **Folder structure** = cách *sắp đồ vào ngăn tủ* (theo loại: áo / quần — hay theo bộ: set đi làm / đi chơi).
+- **Application architecture** = *quy tắc đường đi* trong nhà (phòng nào nối phòng nào, một chiều hay hai chiều).
+- **Domain modeling** = *bản thiết kế ngôi nhà phản ánh nhu cầu sống thật* tới mức nào.
+
+Ba thứ độc lập: đổi cách xếp tủ không làm đổi sơ đồ phòng.
+
+---
+
 ## Dependency Inversion + Dependency Injection (Ports & Adapters)
 
 **Đây là pattern nền tảng cho mọi external client trong backend** (`StorageClient`, `BackgroundRemovalClient`, ...).
