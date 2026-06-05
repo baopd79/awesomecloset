@@ -34,6 +34,7 @@
 <script type="text/babel" src="app-closet.jsx"></script>
 <script type="text/babel" src="app-add.jsx"></script>
 <script type="text/babel" src="app-outfit.jsx"></script>
+<script type="text/babel" src="app-builder.jsx"></script>
 <script type="text/babel" src="app-analytics.jsx"></script>
 <script type="text/babel" src="app-profile.jsx"></script>
 <script type="text/babel" src="app-settings.jsx"></script>
@@ -139,6 +140,7 @@ function App() {
       if (top.screen === 'item') return <ItemScreen params={top.params} />;
       if (top.screen === 'outfit') return <OutfitScreen params={top.params} />;
       if (top.screen === 'suggest') return <SuggestScreen />;
+      if (top.screen === 'builder') return <BuilderScreen />;
       if (top.screen === 'profile') return <ProfileScreen />;
       if (top.screen === 'saved') return <SavedScreen />;
       if (top.screen === 'archive') return <ArchiveScreen />;

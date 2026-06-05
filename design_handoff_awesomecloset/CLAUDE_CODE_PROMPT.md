@@ -15,6 +15,7 @@ Gói thiết kế này là **nguồn chân lý về giao diện**. Nó KHÔNG th
 | **Task 7** — Upload Flow | `feat/7-mobile-upload` | Add (`app-add.jsx`) |
 | **Task 10** — Closet UI | `feat/10-closet-ui` | Closet + Item (`app-closet.jsx`) |
 | **Task 15** — Home + Outfit UI | `feat/15-suggest-ui` | Home (`app-home.jsx`), Suggest + Outfit (`app-outfit.jsx`) |
+| **Builder thủ công** (POST/PATCH /api/outfits) | theo task outfit tương ứng PLAN | `app-builder.jsx` — role-based slots |
 | **Task 16** — Analytics UI | `feat/16-analytics` | Analytics (`app-analytics.jsx`) |
 | **Task 17** — Gamification + Onboarding | `feat/17-gamification` | Onboarding (`app-onboarding.jsx`) + gate/streak ở Home |
 | *(bonus, chưa có task riêng)* | — | Profile/Saved/Archive/Appearance (`app-profile.jsx`, `app-settings.jsx`) |

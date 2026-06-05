@@ -113,6 +113,19 @@ Lưu ý về dữ liệu & ảnh:
 - Preview outfit card trực tiếp ở đầu.
 - Chọn **Tông nhấn** (Nâu đất / Xanh rêu / Than chì / Mận khô) · **Tông giấy nền** (Ấm / Trung tính / Sáng) · **Độ bo góc** (Mềm / Vừa / Sắc) · toggle **chữ serif tiêu đề**. Đổi → áp dụng ngay toàn app.
 
+### 14. Outfit Builder — Tự phối thủ công  `app-builder.jsx` → `BuilderScreen`
+- **Mục đích:** Người dùng **tự chọn từng món ghép outfit** (không qua AI). Map API: `POST /api/outfits` (tạo) + `PATCH /api/outfits/{id}/items` (cập nhật món).
+- **Lối vào:** nút "Tự phối" ở header Closet (nền `ink`, icon spark) · link "Hoặc tự phối thủ công" ở empty state màn Saved.
+- **Cấu trúc role-based slots** (khớp collage role-based — xem mục Collage):
+  - `Áo` (top) — **bắt buộc** — kinds: tee, shirt, hoodie, sweater, jacket, coat, dress
+  - `Quần & Váy` (bottom) — **bắt buộc** — kinds: pants, jeans, shorts, skirt
+  - `Giày` (footer) — tùy chọn — kinds: sneakers, boots
+  - `Phụ kiện` (acc) — tùy chọn — kinds: bag, cap, glasses
+- **Live preview** collage ở đầu (empty state có viền dashed khi chưa chọn món). Mỗi slot: thumbnail + tên món + nút xóa khi đã chọn; viền dashed khi trống, viền liền khi có món.
+- **Picker:** chạm slot → BottomSheet hiện grid 3 cột các món **đúng nhóm** từ tủ (lọc theo `kinds`); chọn → đóng sheet, gắn vào slot. Sheet báo "Tủ đồ chưa có món nào nhóm này" nếu rỗng.
+- **Lưu:** nút "Lưu outfit (N món)" — **chỉ bật khi đã có top + bottom** (validate). Bấm → BottomSheet đặt **tên** + chọn **dịp** (6 occasion) → `POST /api/outfits`. (Mỗi lần đổi slot tương ứng `PATCH /{id}/items` nếu sửa outfit đã tồn tại.)
+- **State:** `picked` (map role→item), `pickerSlot` (slot đang mở picker), `name`, `occ`. Validate: `canSave = picked.top && picked.bottom`.
+
 ---
 
 ## Interactions & Behavior
@@ -205,7 +218,7 @@ Thang 4pt. Mọi padding/gap/margin phải snap về một bậc.
 | `sp6` | 24 | padding ngang màn rộng, section gap |
 | `sp7` | 32 | khoảng cách lớn giữa khối |
 | `sp8` | 40 | padding dọc hero/empty state |
-| ~~`sp10`~~ | ~~54–58~~ | **Không dùng giá trị cứng** — luôn dùng `useSafeAreaInsets().top` từ `react-native-safe-area-context` (thay đổi theo device) |
+| `sp10` | 54–58 | safe-area top header (dùng safe-area inset thật trên RN) |
 
 *Quy ước: padding ngang màn mặc định `sp4` (16); màn nội dung thưa (Onboarding/Auth) dùng `sp6`–`sp8`.*
 
@@ -256,14 +269,9 @@ Mỗi style = font + size + weight + letter-spacing. **Luôn dùng style đặt 
 | `radius.field` | 14 | 14 | 14 | input (cố định) |
 
 ### Shadow — token đặt tên
-RN không support multi-layer shadow — giá trị CSS bên dưới chỉ là visual reference. Dùng giá trị RN thật từ `mobile/lib/theme.ts` (`shadow` và `shadowLg`).
-
-| Visual reference (CSS) | Token |
-|---|---|
-| `0 1px 2px rgba(50,38,24,0.05), 0 8px 22px rgba(60,45,28,0.07)` | `shadow.card` |
-| `0 2px 6px rgba(50,38,24,0.06), 0 20px 48px rgba(60,45,28,0.14)` | `shadow.lg` |
-
-*RN implementation: `shadowColor/Offset/Opacity/Radius` (iOS) + `elevation` (Android). Xem `mobile/lib/theme.ts` để lấy giá trị chính xác.*
+- `shadow.card` = `0 1px 2px rgba(50,38,24,0.05), 0 8px 22px rgba(60,45,28,0.07)` — card thường
+- `shadow.lg` = `0 2px 6px rgba(50,38,24,0.06), 0 20px 48px rgba(60,45,28,0.14)` — card nổi / hero
+- *(RN: dùng `elevation` Android + `shadowColor/Offset/Opacity/Radius` iOS, hoặc lib `react-native-shadow-2` để khớp 2 lớp.)*
 
 ### ThemeProvider + useTheme() — interface chuẩn
 Mọi token (màu, FS, TXT, SP, radius, shadow) phải đi qua một `ThemeProvider` duy nhất, sinh ra từ 4 lựa chọn của người dùng (màn Appearance). Port từ hàm `buildVars` trong `app-core.jsx`.
@@ -317,6 +325,35 @@ Màn **Appearance** chỉ gọi `setChoice({ accent: 'sage' })` → toàn app đ
 ### Iconography
 Toàn bộ icon là **SVG stroke** (vẽ trong `app-core.jsx`, hàm `Icon`, đối tượng `PATHS`), nét 1.8, bo tròn đầu. Trong RN nên thay bằng thư viện tương đương (vd `react-native-svg` + lift nguyên path, hoặc `lucide-react-native` cho các icon phổ thông: home, search, heart, camera, bell, shield… và tự vẽ icon đặc thù như hanger).
 
+## Collage layout — spec chuẩn (role-based)
+
+> **Quyết định (trả lời Open Question của PLAN "flat-lay hay grid?"):** dùng **role-based**, KHÔNG phải grid theo thứ tự mảng. Áp dụng cho **CẢ** collage hiển thị trong app (component `Collage`) **VÀ** ảnh collage backend sinh bằng Pillow (nút Lưu/Chia sẻ) — hai bên phải cho ra bố cục giống nhau.
+
+**Bố cục:** canvas vuông (mặc định 1080×1080 cho Pillow / vuông theo width trong app), nền màu `ground`. Các món chia thành **hàng theo vai trò**, xếp **từ trên xuống** đúng thứ tự mặc đồ:
+
+| Hàng | Role | clothing_type (đối chiếu enum SPEC) |
+|---|---|---|
+| 1 (trên) | **top** = outerwear + tops | jacket, coat, hoodie, sweater, shirt, t_shirt, dress, blouse |
+| 2 (giữa) | **bottom** | pants, jeans, shorts, skirt *(bỏ qua nếu item top là dress)* |
+| 3 (dưới) | **footer** = shoes + accessories | sneakers, boots, sandals, bag, hat, glasses, accessory |
+
+**Quy tắc:**
+- Số hàng = số role **có item** (1–3). Hàng rỗng thì bỏ, các hàng còn lại giãn đều chiều cao.
+- Trong 1 hàng nhiều item → đặt cạnh nhau, **chia đều chiều rộng**; giới hạn ~3 item/hàng để không quá nhỏ.
+- Mỗi ảnh: scale **contain** (không méo), căn giữa ô, chừa padding ~6–8% cạnh ô, bo góc khớp `radius.sm`.
+
+```python
+ROLE = {
+  "top":    {"jacket","coat","hoodie","sweater","shirt","t_shirt","blouse","dress"},
+  "bottom": {"pants","jeans","shorts","skirt"},
+  "footer": {"sneakers","boots","sandals","bag","hat","glasses","accessory"},
+}
+# Thứ tự hàng cố định: top → bottom → footer. Bỏ hàng rỗng.
+# ⚠️ Đối chiếu lại tên clothing_type THẬT trong docs/SPEC.md (Task 1 schema) — proto dùng key rút gọn.
+```
+
+> **Lưu ý đồng bộ:** prototype hiện tại (`Collage` trong `app-extras.jsx`) đang render **grid theo thứ tự mảng** (placeholder web). Khi port, **cập nhật lại theo role-based** ở trên cho cả app lẫn Pillow.
+
 ## Assets
 - **Không có ảnh bitmap thật.** Quần áo = SVG flat-lay tự vẽ trong `garments.jsx` (16 kiểu: tee, shirt, hoodie, sweater, jacket, coat, pants, jeans, shorts, skirt, dress, sneakers, boots, bag, cap, glasses). Đây chỉ là **placeholder** — app thật thay bằng ảnh người dùng đã tách nền.
 - Logo (móc treo) & mọi icon = SVG nội tuyến, không phải file rời.
@@ -331,6 +368,7 @@ File HTML/JSX trong gói (tham chiếu trực quan — mở `AwesomeCloset - Pro
 - `app-onboarding.jsx`, `app-auth.jsx` — onboarding + đăng nhập/đăng ký.
 - `app-home.jsx`, `app-closet.jsx`, `app-add.jsx`, `app-outfit.jsx`, `app-analytics.jsx` — màn chính.
 - `app-profile.jsx`, `app-settings.jsx` — hồ sơ, lưu trữ, tùy chỉnh giao diện.
+- `app-builder.jsx` — Outfit Builder thủ công (role-based slots, map POST/PATCH /api/outfits).
 - `ios-frame.jsx` — khung iPhone (chỉ để xem preview, KHÔNG cần port).
 
 ## Notes quan trọng khi port sang React Native
