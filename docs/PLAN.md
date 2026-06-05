@@ -112,16 +112,16 @@ Git repo + CI (GitHub Actions)
 - [x] GitHub Actions — job `ci-backend`: chạy khi `backend/**` hoặc `tests/**` thay đổi
   - `uv run ruff check backend/` — lint
   - `uv run pytest tests/ --tb=short` — toàn bộ tests
-- [x] GitHub Actions — job `ci-mobile`: chạy khi `mobile/**` thay đổi
-  - `npx tsc --noEmit` — TypeScript strict check
-  - `npx eslint mobile/` — lint
+- [x] GitHub Actions — job `ci-mobile` (thêm lại ở `chore/ci-mobile`, sau khi Expo project có code)
+  - `npm run ts` (`tsc --noEmit`) — TypeScript strict check
+  - ⏳ eslint — **chưa setup** (mobile chưa có eslint config/dep); tách follow-up riêng
 - [x] PR không merge được nếu CI fail (branch protection rule)
 
 **Verification:**
 - [x] Push branch với `print("debug")` trong Python → ruff fail → PR blocked
 - [x] Push branch với `const x: any = 1` trong TypeScript → tsc fail → PR blocked
 - [x] Push branch với test fail → pytest fail → PR blocked
-- [x] Sửa chỉ `mobile/` → `ci-backend` không chạy (path filter hoạt động)
+- [ ] Path filter per-job — **chưa làm**: cả `ci-backend` lẫn `ci-mobile` chạy mọi PR (đơn giản, repo 2-job). Thêm `dorny/paths-filter` nếu CI chậm.
 
 **Dependencies:** None
 
