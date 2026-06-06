@@ -97,7 +97,11 @@ class WorkerSettings:
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = get_redis_settings()
-    max_jobs = 10
+    # Serialize processing: each job runs u2net (rembg) inference, which is memory-heavy
+    # (~hundreds of MB per image). Concurrent jobs spike RAM and get OOM-killed on small
+    # hosts. One-at-a-time keeps peak memory bounded; uploads queue in Redis and drain
+    # sequentially. Raise only if the worker has ample RAM or bg removal is offloaded.
+    max_jobs = 1
     job_timeout = 300
     retry_jobs = True
     job_retry_after = 5  # seconds before retry (ARQ handles exponential via job_try in function)
