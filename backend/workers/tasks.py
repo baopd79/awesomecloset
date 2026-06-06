@@ -13,9 +13,12 @@ from backend.items.repository import ItemRepository
 
 BUCKET = "closet-images"
 THUMBNAIL_SIZE = (400, 400)
+_MAX_TRIES = 3
 # Gemini free tier caps requests-per-minute (~15 RPM). When draining a backlog the worker
 # trips it; defer into the next minute window instead of burning the item to `failed`.
 _RATE_LIMIT_DEFER_S = 60
+# User-facing (Vietnamese) message when tagging gives up on a persistent rate limit.
+_RATE_LIMIT_FAILED_MSG = "AI tạm hết hạn mức, thử lại sau"
 
 
 async def _process_item(ctx: dict, item_id: str) -> None:
@@ -78,11 +81,25 @@ async def _run_pipeline(ctx: dict, session: AsyncSession, item_id: UUID) -> None
         thumbnail_bytes = await storage.download(BUCKET, item.thumbnail_url)
         tags = await ctx["gemini_client"].tag_image(thumbnail_bytes)
     except ResourceExhausted as exc:
-        # Rate-limited by Gemini's free-tier RPM cap. Keep the item in `tagging` and defer the
-        # retry into the next minute window rather than marking it `failed`. Background removal
-        # already succeeded (processed/thumbnail are uploaded with upsert), so the retry is cheap.
+        # Rate-limited by Gemini's free tier. A burst over the per-minute cap clears with a
+        # short defer; but an exhausted *daily* quota 429s every request until midnight reset,
+        # and deferring forever would let orphan recovery re-enqueue the item every 10 min and
+        # burn quota in an endless loop. So defer while tries remain, then give up to `failed`
+        # — stops the loop and lets the user retry later (after reset / billing).
+        job_try = ctx.get("job_try", 1)
+        if job_try >= _MAX_TRIES:
+            logger.error(
+                f"tagging rate-limited, giving up after {job_try} tries | "
+                f"item_id={item_id} | {exc}"
+            )
+            async with transaction(session):
+                await repo.update_status(
+                    item, ProcessingStatus.failed, error=_RATE_LIMIT_FAILED_MSG
+                )
+            raise
         logger.warning(
-            f"tagging rate-limited, deferring {_RATE_LIMIT_DEFER_S}s | item_id={item_id}"
+            f"tagging rate-limited, deferring {_RATE_LIMIT_DEFER_S}s (try {job_try}) | "
+            f"item_id={item_id} | {exc}"
         )
         raise Retry(defer=_RATE_LIMIT_DEFER_S) from exc
     except Exception as exc:
@@ -118,4 +135,4 @@ def _make_thumbnail(png_bytes: bytes) -> bytes:
 
 
 # func() wraps the coroutine so ARQ can serialize/deserialize it as a named job.
-process_item = func(_process_item, name="process_item", max_tries=3)
+process_item = func(_process_item, name="process_item", max_tries=_MAX_TRIES)
