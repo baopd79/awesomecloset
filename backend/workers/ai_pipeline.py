@@ -7,6 +7,10 @@ from pydantic import BaseModel
 from backend.items.models import ClothingOccasion, ClothingSeason, ClothingStyle, ClothingType
 from backend.items.prompts import TAGGING_PROMPT
 
+# Hard cap per Gemini call. With max_jobs=1 a hung request would block the whole queue, so
+# bound it and let the job retry instead of stalling indefinitely.
+_GEMINI_TIMEOUT_S = 30
+
 
 class ColorEntry(BaseModel):
     hex: str
@@ -37,6 +41,8 @@ class GeminiFlashClient(GeminiClient):
     async def tag_image(self, image_bytes: bytes) -> TaggingResult:
         image_part = {"mime_type": "image/jpeg", "data": image_bytes}
         response = await asyncio.to_thread(
-            self._model.generate_content, [TAGGING_PROMPT, image_part]
+            self._model.generate_content,
+            [TAGGING_PROMPT, image_part],
+            request_options={"timeout": _GEMINI_TIMEOUT_S},
         )
         return TaggingResult.model_validate_json(response.text)

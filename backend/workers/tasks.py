@@ -1,7 +1,8 @@
 import io
 from uuid import UUID
 
-from arq import func
+from arq import Retry, func
+from google.api_core.exceptions import ResourceExhausted
 from loguru import logger
 from PIL import Image
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -12,6 +13,9 @@ from backend.items.repository import ItemRepository
 
 BUCKET = "closet-images"
 THUMBNAIL_SIZE = (400, 400)
+# Gemini free tier caps requests-per-minute (~15 RPM). When draining a backlog the worker
+# trips it; defer into the next minute window instead of burning the item to `failed`.
+_RATE_LIMIT_DEFER_S = 60
 
 
 async def _process_item(ctx: dict, item_id: str) -> None:
@@ -73,6 +77,14 @@ async def _run_pipeline(ctx: dict, session: AsyncSession, item_id: UUID) -> None
     try:
         thumbnail_bytes = await storage.download(BUCKET, item.thumbnail_url)
         tags = await ctx["gemini_client"].tag_image(thumbnail_bytes)
+    except ResourceExhausted as exc:
+        # Rate-limited by Gemini's free-tier RPM cap. Keep the item in `tagging` and defer the
+        # retry into the next minute window rather than marking it `failed`. Background removal
+        # already succeeded (processed/thumbnail are uploaded with upsert), so the retry is cheap.
+        logger.warning(
+            f"tagging rate-limited, deferring {_RATE_LIMIT_DEFER_S}s | item_id={item_id}"
+        )
+        raise Retry(defer=_RATE_LIMIT_DEFER_S) from exc
     except Exception as exc:
         logger.error(f"tagging failed | item_id={item_id} error={exc}")
         async with transaction(session):

@@ -148,7 +148,9 @@ class SuggestService:
             try:
                 return await self._weather.get_current(data.lat, data.lng)
             except Exception as exc:
-                logger.warning("weather_resolve_failed lat={} lng={} error={}", data.lat, data.lng, exc)
+                logger.warning(
+                    "weather_resolve_failed lat={} lng={} error={}", data.lat, data.lng, exc
+                )
                 return None
         return None
 
