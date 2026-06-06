@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 
 from backend.core.config import settings
 from backend.core.dependencies import ArqDep, CurrentUserDep, SessionDep
+from backend.core.ratelimit import limiter
 from backend.core.storage import SupabaseStorageClient
 from backend.items.models import ClothingOccasion, ClothingSeason, ClothingType
 from backend.items.repository import ItemRepository
@@ -25,7 +26,9 @@ ServiceDep = Annotated[ItemService, Depends(_make_service)]
 
 
 @router.post("/upload", status_code=status.HTTP_202_ACCEPTED, response_model=ItemResponse)
+@limiter.limit("50/day")
 async def upload_item(
+    request: Request,
     user_id: CurrentUserDep,
     svc: ServiceDep,
     file: Annotated[UploadFile, File()],
