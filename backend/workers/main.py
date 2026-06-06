@@ -1,6 +1,6 @@
 from urllib.parse import urlparse
 
-from arq import create_pool
+from arq import create_pool, cron
 from arq.connections import RedisSettings
 from loguru import logger
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -86,10 +86,15 @@ async def startup(ctx: dict) -> None:
 
 
 async def _recover_orphaned(ctx: dict) -> None:
-    """On startup: re-enqueue items stuck in processing states for >{threshold}min.
+    """Re-enqueue items stuck in processing states for >{threshold}min.
 
-    Uses deterministic _job_id so concurrent worker instances are safe — ARQ deduplicates
-    if the same job_id is already queued or in-progress.
+    Runs once on startup AND periodically via cron — startup alone is not enough: an item
+    whose job exhausted its retries falls out of the queue and would otherwise sit stuck until
+    the next worker restart. The periodic sweep picks it back up. Items that keep failing reach
+    `failed` (not an orphan status) and drop out of the sweep, so this does not loop forever.
+
+    Uses deterministic _job_id so concurrent runs are safe — ARQ deduplicates if the same
+    job_id is already queued or in-progress.
     """
     async with ctx["session_factory"]() as session:
         items = await ItemRepository(session).list_orphaned()
@@ -122,6 +127,9 @@ class WorkerSettings:
     functions = [process_item]
     on_startup = startup
     on_shutdown = shutdown
+    # Sweep for orphaned items every 5 minutes (startup already runs one sweep, so skip
+    # run_at_startup). Re-enqueues items the queue dropped without needing a worker restart.
+    cron_jobs = [cron(_recover_orphaned, minute=set(range(0, 60, 5)), run_at_startup=False)]
     redis_settings = get_redis_settings()
     # Serialize processing: each job runs u2net (rembg) inference, which is memory-heavy
     # (~hundreds of MB per image). Concurrent jobs spike RAM and get OOM-killed on small

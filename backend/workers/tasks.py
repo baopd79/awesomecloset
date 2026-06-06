@@ -135,4 +135,9 @@ def _make_thumbnail(png_bytes: bytes) -> bytes:
 
 
 # func() wraps the coroutine so ARQ can serialize/deserialize it as a named job.
-process_item = func(_process_item, name="process_item", max_tries=_MAX_TRIES)
+# keep_result=0: we never read ARQ job results (status lives in the DB). Storing them would
+# keep a `result:process_item:{id}` key for an hour, and enqueue_job treats that key as "job
+# already exists" — so a retry/recovery with the same deterministic id within that hour is
+# silently dropped (the item stalls at pending). Dropping results lets re-enqueue work
+# immediately; in-flight dedup still holds via the job key while a job is queued/running.
+process_item = func(_process_item, name="process_item", max_tries=_MAX_TRIES, keep_result=0)
