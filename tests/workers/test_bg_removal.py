@@ -217,12 +217,12 @@ async def test_run_pipeline_sets_failed_when_both_clients_fail():
 
 @pytest.mark.asyncio
 async def test_run_pipeline_defers_on_tagging_rate_limit():
-    # Gemini 429 must defer (ARQ Retry) and keep the item in `tagging`, not mark it `failed`.
+    # Gemini 429 with tries remaining must defer (ARQ Retry), keep `tagging`, not `failed`.
     from arq import Retry
     from google.api_core.exceptions import ResourceExhausted
 
     item = _make_item()
-    ctx = _make_ctx()
+    ctx = _make_ctx()  # no job_try → defaults to 1, below max
     ctx["gemini_client"].tag_image = AsyncMock(side_effect=ResourceExhausted("rate limited"))
     session = MagicMock()
     session.commit = AsyncMock()
@@ -236,6 +236,30 @@ async def test_run_pipeline_defers_on_tagging_rate_limit():
     statuses = [c.args[1] for c in repo.update_status.call_args_list]
     assert ProcessingStatus.failed not in statuses
     assert statuses[-1] == ProcessingStatus.tagging
+
+
+@pytest.mark.asyncio
+async def test_run_pipeline_fails_when_rate_limit_exhausts_tries():
+    # On the last try a persistent 429 (exhausted daily quota) must give up to `failed` —
+    # not defer forever — so orphan recovery stops re-enqueueing and burning quota.
+    from google.api_core.exceptions import ResourceExhausted
+
+    from backend.workers.tasks import _MAX_TRIES
+
+    item = _make_item()
+    ctx = _make_ctx()
+    ctx["job_try"] = _MAX_TRIES
+    ctx["gemini_client"].tag_image = AsyncMock(side_effect=ResourceExhausted("quota exhausted"))
+    session = MagicMock()
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+
+    repo = _make_repo(item)
+    with patch("backend.workers.tasks.ItemRepository", return_value=repo):
+        with pytest.raises(ResourceExhausted):
+            await _run_pipeline(ctx, session, item.id)
+
+    assert repo.update_status.call_args_list[-1].args[1] == ProcessingStatus.failed
 
 
 @pytest.mark.asyncio
