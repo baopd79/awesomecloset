@@ -18,6 +18,28 @@ from backend.workers.tasks import process_item
 _REMBG_MODEL = "u2netp"
 
 
+def _new_rembg_session():
+    """Build the rembg session with onnxruntime's CPU memory arena disabled.
+
+    onnxruntime otherwise keeps a memory arena that grows across inferences and is never
+    released, so the worker's resident memory creeps up job-after-job until it is OOM-killed
+    on a small (1GB) host. Disabling the arena frees memory per run for a flat profile;
+    intra_op_num_threads=1 suits a single-vCPU worker. mem_pattern is left on: u2netp runs at
+    a fixed 320x320 shape, so its pattern memory is small and constant (not a source of creep)
+    while still buying inference speed. rembg.new_session() builds its own SessionOptions
+    internally, so we replicate its class lookup to inject ours.
+    """
+    import onnxruntime as ort
+    from rembg.session_factory import sessions_class
+    from rembg.sessions.u2net import U2netSession
+
+    sess_opts = ort.SessionOptions()
+    sess_opts.enable_cpu_mem_arena = False
+    sess_opts.intra_op_num_threads = 1
+    session_class = next((sc for sc in sessions_class if sc.name() == _REMBG_MODEL), U2netSession)
+    return session_class(_REMBG_MODEL, sess_opts)
+
+
 def get_redis_settings() -> RedisSettings:
     # Parses REDIS_URL env var into ARQ RedisSettings.
     parsed = urlparse(settings.redis_url)
@@ -32,8 +54,6 @@ def get_redis_settings() -> RedisSettings:
 async def startup(ctx: dict) -> None:
     """Init shared resources once per worker process and store in ctx."""
     import asyncio
-
-    import rembg
 
     engine = create_async_engine(
         settings.database_url,
@@ -50,7 +70,7 @@ async def startup(ctx: dict) -> None:
     # (~300-400MB vs ~960MB), which keeps the worker under a 1GB limit. Quality is
     # slightly lower but adequate for closet items on simple backgrounds.
     logger.info(f"rembg: loading {_REMBG_MODEL} model (first run may take a few minutes)...")
-    rembg_session = await asyncio.to_thread(rembg.new_session, _REMBG_MODEL)
+    rembg_session = await asyncio.to_thread(_new_rembg_session)
     logger.info("rembg: model ready")
     ctx["bg_client"] = RembgClient(rembg_session)
     ctx["fallback_client"] = (

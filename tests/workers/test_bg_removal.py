@@ -216,6 +216,29 @@ async def test_run_pipeline_sets_failed_when_both_clients_fail():
 
 
 @pytest.mark.asyncio
+async def test_run_pipeline_defers_on_tagging_rate_limit():
+    # Gemini 429 must defer (ARQ Retry) and keep the item in `tagging`, not mark it `failed`.
+    from arq import Retry
+    from google.api_core.exceptions import ResourceExhausted
+
+    item = _make_item()
+    ctx = _make_ctx()
+    ctx["gemini_client"].tag_image = AsyncMock(side_effect=ResourceExhausted("rate limited"))
+    session = MagicMock()
+    session.commit = AsyncMock()
+    session.rollback = AsyncMock()
+
+    repo = _make_repo(item)
+    with patch("backend.workers.tasks.ItemRepository", return_value=repo):
+        with pytest.raises(Retry):
+            await _run_pipeline(ctx, session, item.id)
+
+    statuses = [c.args[1] for c in repo.update_status.call_args_list]
+    assert ProcessingStatus.failed not in statuses
+    assert statuses[-1] == ProcessingStatus.tagging
+
+
+@pytest.mark.asyncio
 async def test_run_pipeline_skips_missing_item():
     ctx = _make_ctx()
     session = MagicMock()
