@@ -21,7 +21,7 @@ const PATHS: Record<string, string> = {
   edit: 'M5 19l-1 1 1-4L16 5l3 3L8 19zM14 7l3 3',
   star: 'M12 3l2.6 6.3L21 10l-5 4.3L17.5 21 12 17.3 6.5 21 8 14.3 3 10l6.4-.7z',
   wear: 'M7 4l5 3 5-3 3 5-3 2v9H7v-9L4 9z',
-  dislike: 'M7 10v9H4v-9zM7 10l4-7c2 0 3 1 3 3l-.5 4H20l-2 8h-7l-4-2',
+  dislike: 'M17 14v-9H20v9zM17 14l-4 7c-2 0-3-1-3-3l.5-4H4l2-8h7l4 2',
   filter: 'M4 6h16M7 12h10M10 18h4',
   loc: 'M12 21s-6-5.3-6-10a6 6 0 1112 0c0 4.7-6 10-6 10zM12 9a2 2 0 100 4 2 2 0 000-4z',
   bell: 'M6 16V10a6 6 0 1112 0v6l2 2H4zM10 21h4',
