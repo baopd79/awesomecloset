@@ -156,9 +156,13 @@ class ItemService:
 
     async def retry_processing(self, item_id: UUID, user_id: UUID) -> ClothingItem:
         item = await self._get_or_raise(item_id, user_id)
-        if item.processing_status != ProcessingStatus.failed:
+        # Allow retry for anything that is not already done: `failed` items plus items the
+        # worker left parked in a processing state (pending/removing_bg/tagging) after an
+        # OOM-kill or rate-limit defer. Without this, such items have no manual escape hatch
+        # and sit in limbo until the 10-min orphan recovery happens to land on a live worker.
+        if item.processing_status == ProcessingStatus.ready:
             raise AppException(
-                code="ITEM_NOT_FAILED",
+                code="ITEM_ALREADY_READY",
                 status=400,
                 item_id=str(item_id),
                 current_status=item.processing_status,

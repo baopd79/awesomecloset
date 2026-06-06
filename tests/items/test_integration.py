@@ -380,8 +380,8 @@ async def test_soft_deleted_item_never_listed_in_archive(repo, db_session, test_
 
 
 @pytest.mark.asyncio
-async def test_service_retry_requires_failed_status(repo, db_session, test_user_id):
-    item = ClothingItem(user_id=test_user_id, processing_status=ProcessingStatus.pending)
+async def test_service_retry_rejects_ready_status(repo, db_session, test_user_id):
+    item = ClothingItem(user_id=test_user_id, processing_status=ProcessingStatus.ready)
     async with transaction(db_session):
         created = await repo.create(item)
 
@@ -392,4 +392,4 @@ async def test_service_retry_requires_failed_status(repo, db_session, test_user_
     with pytest.raises(AppException) as exc_info:
         await svc.retry_processing(created.id, test_user_id)
 
-    assert exc_info.value.code == "ITEM_NOT_FAILED"
+    assert exc_info.value.code == "ITEM_ALREADY_READY"

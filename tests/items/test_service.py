@@ -267,7 +267,7 @@ async def test_retry_processing_requeues_failed_item():
 
 
 @pytest.mark.asyncio
-async def test_retry_processing_rejects_non_failed_item():
+async def test_retry_processing_rejects_ready_item():
     user_id = uuid.uuid4()
     item_id = uuid.uuid4()
     item = ClothingItem(id=item_id, user_id=user_id, processing_status=ProcessingStatus.ready)
@@ -279,8 +279,32 @@ async def test_retry_processing_rejects_non_failed_item():
     with pytest.raises(AppException) as exc_info:
         await svc.retry_processing(item_id, user_id)
 
-    assert exc_info.value.code == "ITEM_NOT_FAILED"
+    assert exc_info.value.code == "ITEM_ALREADY_READY"
     assert exc_info.value.status == 400
+
+
+@pytest.mark.asyncio
+async def test_retry_processing_requeues_stuck_processing_item():
+    # An item the worker left parked mid-pipeline (e.g. OOM-killed during tagging) must be
+    # retriable — not only `failed` items — so the user has a manual escape hatch.
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    item = ClothingItem(id=item_id, user_id=user_id, processing_status=ProcessingStatus.tagging)
+
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=item)
+    repo.update_status = AsyncMock()
+
+    arq = MagicMock()
+    arq.enqueue_job = AsyncMock()
+    svc = _make_service(repo=repo, arq=arq)
+
+    await svc.retry_processing(item_id, user_id)
+
+    repo.update_status.assert_awaited_once_with(item, ProcessingStatus.pending, error=None)
+    arq.enqueue_job.assert_awaited_once_with(
+        "process_item", str(item_id), _job_id=f"process_item:{item_id}"
+    )
 
 
 # --- TagsUpdateRequest validation ---
