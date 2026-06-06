@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -12,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Icon } from '@/components/ui/Icon';
 import { Kicker } from '@/components/ui/Kicker';
-import { archiveItem, getItem, retryItem, type ItemResponse } from '@/lib/api';
+import { archiveItem, deleteItem, getItem, retryItem, type ItemResponse } from '@/lib/api';
 import {
   OCCASION_LABEL,
   SEASON_LABEL,
@@ -29,6 +30,7 @@ export default function ItemScreen() {
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -63,6 +65,26 @@ export default function ItemScreen() {
     } finally {
       setRetrying(false);
     }
+  }
+
+  function handleDelete() {
+    if (!item || deleting) return;
+    Alert.alert('Xoá món này?', 'Món đồ sẽ bị xoá khỏi tủ và không thể khôi phục.', [
+      { text: 'Huỷ', style: 'cancel' },
+      {
+        text: 'Xoá',
+        style: 'destructive',
+        onPress: async () => {
+          setDeleting(true);
+          try {
+            await deleteItem(item.id);
+            router.back();
+          } catch {
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
   }
 
   if (loading) {
@@ -105,13 +127,22 @@ export default function ItemScreen() {
             <Pressable onPress={() => router.back()} style={styles.iconBtn}>
               <Icon name="back" size={22} color={T.ink} />
             </Pressable>
-            <Pressable onPress={handleArchive} style={styles.iconBtn} disabled={archiving}>
-              {archiving ? (
-                <ActivityIndicator size="small" color={T.ink2} />
-              ) : (
-                <Icon name="archive" size={22} color={T.ink} />
-              )}
-            </Pressable>
+            <View style={styles.heroRightActions}>
+              <Pressable onPress={handleArchive} style={styles.iconBtn} disabled={archiving}>
+                {archiving ? (
+                  <ActivityIndicator size="small" color={T.ink2} />
+                ) : (
+                  <Icon name="archive" size={22} color={T.ink} />
+                )}
+              </Pressable>
+              <Pressable onPress={handleDelete} style={styles.iconBtn} disabled={deleting}>
+                {deleting ? (
+                  <ActivityIndicator size="small" color={T.danger} />
+                ) : (
+                  <Icon name="trash" size={22} color={T.danger} />
+                )}
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.heroImg}>
@@ -166,16 +197,27 @@ export default function ItemScreen() {
 
           {/* processing status */}
           {!isReady && !isFailed && (
-            <View style={styles.processingRow}>
-              <ActivityIndicator size="small" color={T.accent} />
-              <Text style={styles.processingText}>
-                {item.processing_status === 'removing_bg'
-                  ? 'Đang tách nền…'
-                  : item.processing_status === 'tagging'
-                  ? 'AI đang gắn thẻ…'
-                  : 'Đang chờ xử lý…'}
-              </Text>
-            </View>
+            <>
+              <View style={styles.processingRow}>
+                <ActivityIndicator size="small" color={T.accent} />
+                <Text style={styles.processingText}>
+                  {item.processing_status === 'removing_bg'
+                    ? 'Đang tách nền…'
+                    : item.processing_status === 'tagging'
+                    ? 'AI đang gắn thẻ…'
+                    : 'Đang chờ xử lý…'}
+                </Text>
+              </View>
+              {/* escape hatch for items stuck in a processing state */}
+              <Pressable onPress={handleRetry} disabled={retrying} style={styles.retryBtn}>
+                {retrying ? (
+                  <ActivityIndicator size="small" color={T.accent} />
+                ) : (
+                  <Icon name="retry" size={15} color={T.accent} />
+                )}
+                <Text style={styles.retryText}>Xử lý lâu? Thử lại</Text>
+              </Pressable>
+            </>
           )}
 
           {isReady && (
@@ -256,6 +298,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
+  },
+  heroRightActions: {
+    flexDirection: 'row',
+    gap: 10,
   },
   iconBtn: {
     width: 40,
