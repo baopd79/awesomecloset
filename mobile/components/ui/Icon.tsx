@@ -28,6 +28,7 @@ const PATHS: Record<string, string> = {
   lock: 'M6 10V8a6 6 0 1112 0v2M5 10h14v10H5z',
   cal: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
   archive: 'M4 5h16v4H4zM5 9h14v10H5zM9 13h6',
+  trash: 'M5 7h14M10 7V4h4v3M6 7l1 13h10l1-13M10 11v5M14 11v5',
   sun: 'M12 4v2M12 18v2M4 12h2M18 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18',
   user: 'M12 12a4 4 0 100-8 4 4 0 000 8zM5 20a7 7 0 0114 0',
   bookmark: 'M6 4h12v17l-6-4-6 4z',

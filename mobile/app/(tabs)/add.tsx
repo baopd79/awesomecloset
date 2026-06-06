@@ -1,8 +1,10 @@
 import * as ImagePicker from 'expo-image-picker';
 import type { ImagePickerAsset } from 'expo-image-picker';
-import React, { useCallback, useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -16,7 +18,7 @@ import { GhostBtn } from '@/components/ui/GhostBtn';
 import { Icon } from '@/components/ui/Icon';
 import { Kicker } from '@/components/ui/Kicker';
 import { PrimaryBtn } from '@/components/ui/PrimaryBtn';
-import { uploadItem, type ProcessingStatus } from '@/lib/api';
+import { deleteItem, uploadItem } from '@/lib/api';
 import { T } from '@/lib/theme';
 
 type PermSource = 'camera' | 'gallery';
@@ -28,17 +30,81 @@ interface QueueItem {
   status: LocalStatus;
 }
 
+interface AddedItem {
+  itemId: string;
+  localUri: string;
+}
+
 let _keySeq = 0;
 
+// How long a finished card lingers before it auto-collapses out of the queue.
+const COLLAPSE_DELAY_MS = 3000;
+
 export default function AddScreen() {
+  const router = useRouter();
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [readyCount, setReadyCount] = useState(0);
+  // Items added in this session — surfaced as a "Vừa thêm" strip so they don't vanish
+  // when their card auto-collapses (the closet itself doesn't flag freshly-added items).
+  const [recentlyAdded, setRecentlyAdded] = useState<AddedItem[]>([]);
   const [permSheet, setPermSheet] = useState<PermSource | null>(null);
   const [pendingSource, setPendingSource] = useState<PermSource | null>(null);
 
-  const handleReady = useCallback(() => {
-    setReadyCount((c) => c + 1);
+  // Pending auto-collapse timers, keyed by card — cleared on unmount.
+  const collapseTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  useEffect(() => {
+    const timers = collapseTimers.current;
+    return () => {
+      Object.values(timers).forEach(clearTimeout);
+    };
   }, []);
+
+  const dismissCard = useCallback((key: string) => {
+    setQueue((prev) => prev.filter((q) => q.key !== key));
+  }, []);
+
+  const handleReady = useCallback((item: QueueItem) => {
+    if (item.itemId) {
+      setRecentlyAdded((prev) =>
+        prev.some((a) => a.itemId === item.itemId)
+          ? prev
+          : [{ itemId: item.itemId as string, localUri: item.localUri }, ...prev],
+      );
+    }
+    // Linger briefly so the user sees the "Hoàn tất" state, then collapse out of the queue.
+    if (collapseTimers.current[item.key]) return;
+    collapseTimers.current[item.key] = setTimeout(() => {
+      delete collapseTimers.current[item.key];
+      dismissCard(item.key);
+    }, COLLAPSE_DELAY_MS);
+  }, [dismissCard]);
+
+  const viewInCloset = useCallback(() => {
+    router.push('/closet');
+    // They've gone to look — the strip has served its purpose, so clear it.
+    setRecentlyAdded([]);
+  }, [router]);
+
+  const deleteCard = useCallback((item: QueueItem) => {
+    if (!item.itemId) {
+      dismissCard(item.key);
+      return;
+    }
+    Alert.alert('Xoá ảnh này?', 'Ảnh sẽ bị xoá khỏi tủ đồ và không thể khôi phục.', [
+      { text: 'Huỷ', style: 'cancel' },
+      {
+        text: 'Xoá',
+        style: 'destructive',
+        onPress: async () => {
+          dismissCard(item.key);
+          try {
+            await deleteItem(item.itemId as string);
+          } catch (e) {
+            console.error('[delete error]', String(e));
+          }
+        },
+      },
+    ]);
+  }, [dismissCard]);
 
   const openPicker = useCallback(async (source: PermSource) => {
     const shared: ImagePicker.ImagePickerOptions = { mediaTypes: 'images', quality: 0.85 };
@@ -168,14 +234,47 @@ export default function AddScreen() {
           </GhostBtn>
         </View>
 
+        {/* recently added — keeps this session's items findable after their card collapses */}
+        {recentlyAdded.length > 0 && (
+          <View style={styles.addedSection}>
+            <View style={styles.addedCard}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.addedThumbs}
+              >
+                {recentlyAdded.map((a) => (
+                  <Image key={a.itemId} source={{ uri: a.localUri }} style={styles.addedThumb} />
+                ))}
+              </ScrollView>
+              <View style={styles.addedRow}>
+                <View style={styles.addedDot}>
+                  <Icon name="check" size={13} color="#fff" strokeWidth={2.5} />
+                </View>
+                <Text style={styles.addedLabel}>
+                  {recentlyAdded.length} món đã thêm vào tủ
+                </Text>
+                <Pressable onPress={viewInCloset} hitSlop={8} style={styles.addedLink}>
+                  <Text style={styles.addedLinkText}>Xem trong tủ</Text>
+                  <Icon name="chevron" size={15} color={T.accent} />
+                </Pressable>
+                <Pressable
+                  onPress={() => setRecentlyAdded([])}
+                  hitSlop={8}
+                  style={styles.addedClose}
+                >
+                  <Icon name="close" size={15} color={T.sub} />
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* queue */}
         {queue.length > 0 && (
           <View style={styles.queueSection}>
             <View style={styles.queueHeader}>
               <Text style={styles.queueTitle}>Hàng đợi xử lý</Text>
-              {readyCount > 0 && (
-                <Text style={styles.doneCount}>{readyCount} đã xong</Text>
-              )}
             </View>
             {queue.map((item) => (
               <ItemProcessingCard
@@ -183,7 +282,9 @@ export default function AddScreen() {
                 itemId={item.itemId}
                 localUri={item.localUri}
                 initialStatus={item.status}
-                onReady={handleReady}
+                onReady={() => handleReady(item)}
+                onDismiss={() => dismissCard(item.key)}
+                onDelete={() => deleteCard(item)}
               />
             ))}
           </View>
@@ -374,10 +475,56 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: T.ink,
   },
-  doneCount: {
+  addedSection: { paddingHorizontal: 16, paddingTop: 22 },
+  addedCard: {
+    backgroundColor: T.surface,
+    borderRadius: T.rsm,
+    padding: 12,
+    ...T.shadow,
+  },
+  addedThumbs: { gap: 8, paddingBottom: 10 },
+  addedThumb: {
+    width: 52,
+    height: 52,
+    borderRadius: T.rsm,
+    backgroundColor: T.ground,
+  },
+  addedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  addedDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: T.sage,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addedLabel: {
+    flex: 1,
     fontFamily: 'BeVietnamPro_600SemiBold',
-    fontSize: 12.5,
-    color: T.sage,
+    fontSize: 13,
+    color: T.ink,
+  },
+  addedLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  addedLinkText: {
+    fontFamily: 'BeVietnamPro_600SemiBold',
+    fontSize: 13,
+    color: T.accent,
+  },
+  addedClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: T.ground,
   },
   overlay: {
     flex: 1,

@@ -14,6 +14,12 @@ function imgHeight(id: string): number {
   return HEIGHTS[hash % HEIGHTS.length];
 }
 
+// Items added within this window get a "MỚI" badge so the freshly-uploaded ones stand out.
+const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
+function isRecentlyAdded(createdAt: string): boolean {
+  return Date.now() - new Date(createdAt).getTime() < NEW_WINDOW_MS;
+}
+
 interface Props {
   item: ItemResponse;
   onArchive: (id: string) => void;
@@ -33,6 +39,7 @@ export function ItemCard({ item, onArchive }: Props) {
   const swipeRef = useRef<Swipeable>(null);
   const isReady = item.processing_status === 'ready';
   const isFailed = item.processing_status === 'failed';
+  const isNew = isReady && isRecentlyAdded(item.created_at);
   const h = imgHeight(item.id);
 
   function handleArchive() {
@@ -66,10 +73,16 @@ export function ItemCard({ item, onArchive }: Props) {
             <SkeletonShimmer />
           )}
 
-          {isReady && item.wear_count === 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>CHƯA MẶC</Text>
+          {isNew ? (
+            <View style={[styles.badge, styles.badgeNew]}>
+              <Text style={[styles.badgeText, styles.badgeNewText]}>MỚI</Text>
             </View>
+          ) : (
+            isReady && item.wear_count === 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>CHƯA MẶC</Text>
+              </View>
+            )
           )}
         </View>
 
@@ -142,6 +155,12 @@ const styles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: 0.5,
     color: T.accent,
+  },
+  badgeNew: {
+    backgroundColor: T.accent,
+  },
+  badgeNewText: {
+    color: '#fff',
   },
   info: {
     padding: 11,

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Icon } from '@/components/ui/Icon';
 import { useRealtimeItem } from '@/hooks/useRealtimeItem';
 import { retryItem, type ProcessingStatus } from '@/lib/api';
@@ -20,9 +20,20 @@ interface Props {
   localUri: string;
   initialStatus: LocalStatus;
   onReady?: () => void;
+  /** Hide this card from the queue (local only — the item stays in the closet). */
+  onDismiss?: () => void;
+  /** Delete the underlying item from the server (only meaningful once itemId exists). */
+  onDelete?: () => void;
 }
 
-export function ItemProcessingCard({ itemId, localUri, initialStatus, onReady }: Props) {
+export function ItemProcessingCard({
+  itemId,
+  localUri,
+  initialStatus,
+  onReady,
+  onDismiss,
+  onDelete,
+}: Props) {
   const [status, setStatus] = useState<LocalStatus>(initialStatus);
   const [retrying, setRetrying] = useState(false);
 
@@ -62,6 +73,23 @@ export function ItemProcessingCard({ itemId, localUri, initialStatus, onReady }:
   const failed = status === 'failed';
   const uploadFailed = status === 'failed' && !itemId;
   const step = STEPS.find(s => s.key === status) ?? STEPS[0];
+
+  const confirmDismiss = () => {
+    // Hiding a finished/failed card is harmless; confirm only while it's still in-flight so
+    // an accidental tap doesn't drop the progress card of an item that's still processing.
+    if (done || failed) {
+      onDismiss?.();
+      return;
+    }
+    Alert.alert(
+      'Ẩn khỏi hàng đợi?',
+      'Món đồ vẫn đang xử lý và sẽ xuất hiện trong tủ đồ khi xong — bạn chỉ ẩn thẻ này khỏi danh sách.',
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        { text: 'Ẩn', onPress: () => onDismiss?.() },
+      ],
+    );
+  };
 
   return (
     <View style={styles.card}>
@@ -104,12 +132,24 @@ export function ItemProcessingCard({ itemId, localUri, initialStatus, onReady }:
         </View>
       </View>
 
-      {failed && itemId && (
-        <Pressable onPress={handleRetry} disabled={retrying} style={styles.retryBtn}>
-          <Icon name="retry" size={13} color={T.accent} />
-          <Text style={styles.retryText}>Thử lại</Text>
-        </Pressable>
-      )}
+      <View style={styles.actions}>
+        {failed && itemId && (
+          <Pressable onPress={handleRetry} disabled={retrying} style={styles.retryBtn}>
+            <Icon name="retry" size={13} color={T.accent} />
+            <Text style={styles.retryText}>Thử lại</Text>
+          </Pressable>
+        )}
+        {/* failed-with-item → delete from server (junk upload); otherwise → just hide the card */}
+        {failed && itemId ? (
+          <Pressable onPress={onDelete} hitSlop={8} style={styles.iconAction}>
+            <Icon name="trash" size={16} color={T.danger} />
+          </Pressable>
+        ) : (
+          <Pressable onPress={confirmDismiss} hitSlop={8} style={styles.iconAction}>
+            <Icon name="close" size={16} color={T.sub} />
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -188,6 +228,20 @@ const styles = StyleSheet.create({
     fontFamily: 'BeVietnamPro_600SemiBold',
     fontSize: 12,
     color: T.danger,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  iconAction: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: T.ground,
   },
   retryBtn: {
     flexDirection: 'row',

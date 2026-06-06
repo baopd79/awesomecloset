@@ -111,6 +111,19 @@ export async function unarchiveItem(itemId: string): Promise<ItemResponse> {
   return response.json() as Promise<ItemResponse>;
 }
 
+export async function deleteItem(itemId: string): Promise<void> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/items/${itemId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  // 204 No Content on success — response.ok covers it.
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Delete failed (${response.status}): ${text}`);
+  }
+}
+
 export async function retryItem(itemId: string): Promise<ItemResponse> {
   const token = await getToken();
 
