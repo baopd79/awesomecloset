@@ -14,6 +14,9 @@ from backend.workers.ai_pipeline import GeminiFlashClient
 from backend.workers.bg_removal import RembgClient, RemoveBgApiClient
 from backend.workers.tasks import process_item
 
+# Lightweight u2net variant — small resident footprint to fit the worker's memory limit.
+_REMBG_MODEL = "u2netp"
+
 
 def get_redis_settings() -> RedisSettings:
     # Parses REDIS_URL env var into ARQ RedisSettings.
@@ -42,9 +45,12 @@ async def startup(ctx: dict) -> None:
     ctx["storage"] = SupabaseStorageClient(
         settings.supabase_url, settings.supabase_service_role_key
     )
-    # Load rembg model once — expensive, avoid per-job. Downloads ~170MB on first run.
-    logger.info("rembg: loading u2net model (first run may take a few minutes)...")
-    rembg_session = await asyncio.to_thread(rembg.new_session, "u2net")
+    # Load rembg model once — expensive, avoid per-job. Downloads on first run.
+    # u2netp is the lightweight u2net (~5MB vs 176MB): far smaller resident memory
+    # (~300-400MB vs ~960MB), which keeps the worker under a 1GB limit. Quality is
+    # slightly lower but adequate for closet items on simple backgrounds.
+    logger.info(f"rembg: loading {_REMBG_MODEL} model (first run may take a few minutes)...")
+    rembg_session = await asyncio.to_thread(rembg.new_session, _REMBG_MODEL)
     logger.info("rembg: model ready")
     ctx["bg_client"] = RembgClient(rembg_session)
     ctx["fallback_client"] = (
