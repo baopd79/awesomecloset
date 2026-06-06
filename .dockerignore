@@ -1,0 +1,24 @@
+# Keep the build context (and image) small — only backend code + deps are needed.
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Not needed by the API/worker runtime
+mobile/
+design_handoff_awesomecloset/
+docs/
+tests/
+supabase/
+
+# Local env / editor
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+.DS_Store
