@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { EditTagsSheet } from '@/components/EditTagsSheet';
 import { Icon } from '@/components/ui/Icon';
 import { Kicker } from '@/components/ui/Kicker';
+import { useToast } from '@/components/ui/Toast';
 import { archiveItem, deleteItem, getItem, retryItem, type ItemResponse } from '@/lib/api';
 import {
   OCCASION_LABEL,
@@ -31,6 +33,8 @@ export default function ItemScreen() {
   const [retrying, setRetrying] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -242,7 +246,13 @@ export default function ItemScreen() {
               )}
 
               {/* AI tags */}
-              <Text style={styles.sectionTitle}>Thẻ gắn (AI)</Text>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitleInline}>Thẻ gắn (AI)</Text>
+                <Pressable onPress={() => setEditOpen(true)} hitSlop={8} style={styles.editBtn}>
+                  <Icon name="edit" size={15} color={T.accent} />
+                  <Text style={styles.editText}>Sửa</Text>
+                </Pressable>
+              </View>
               <View style={styles.tagRow}>
                 {typeLabel && <TagChip>{typeLabel}</TagChip>}
                 {occasions.map((o) => <TagChip key={o}>{o}</TagChip>)}
@@ -278,6 +288,16 @@ export default function ItemScreen() {
           )}
         </View>
       </ScrollView>
+
+      <EditTagsSheet
+        visible={editOpen}
+        item={item}
+        onClose={() => setEditOpen(false)}
+        onSaved={(updated) => {
+          setItem(updated);
+          toast.show('Đã cập nhật thẻ');
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -379,6 +399,28 @@ const styles = StyleSheet.create({
     color: T.ink,
     marginTop: 24,
     marginBottom: 12,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  sectionTitleInline: {
+    fontFamily: 'BeVietnamPro_700Bold',
+    fontSize: 14,
+    color: T.ink,
+  },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  editText: {
+    fontFamily: 'BeVietnamPro_600SemiBold',
+    fontSize: 13,
+    color: T.accent,
   },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tagChip: {

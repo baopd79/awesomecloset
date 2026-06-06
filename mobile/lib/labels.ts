@@ -43,6 +43,12 @@ export const STYLE_LABEL: Record<string, string> = {
   minimalist: 'Tối giản',
 };
 
+// Ordered enum values for the tag-edit form (keys preserve insertion order above).
+export const TYPE_VALUES = Object.keys(TYPE_LABEL);
+export const STYLE_VALUES = Object.keys(STYLE_LABEL);
+export const SEASON_VALUES = Object.keys(SEASON_LABEL);
+export const OCCASION_VALUES = Object.keys(OCCASION_LABEL);
+
 // Category → type values (for filter bar)
 export type ClosetCategory = 'all' | 'tops' | 'bottoms' | 'shoes' | 'accessories';
 
