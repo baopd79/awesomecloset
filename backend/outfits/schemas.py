@@ -57,6 +57,7 @@ class OutfitResponse(BaseModel):
     occasion: ClothingOccasion | None
     ai_generated: bool
     ai_reasoning: str | None
+    is_saved: bool
     items: list[OutfitItemResponse]
     created_at: datetime
     updated_at: datetime

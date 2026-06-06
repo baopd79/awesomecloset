@@ -153,6 +153,7 @@ export interface OutfitResponse {
   occasion: string | null;
   ai_generated: boolean;
   ai_reasoning: string | null;
+  is_saved: boolean;
   items: OutfitItem[];
   created_at: string;
   updated_at: string;
@@ -233,6 +234,70 @@ export async function getOutfit(outfitId: string): Promise<OutfitResponse> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw new Error(`Get outfit failed (${response.status})`);
+  return response.json() as Promise<OutfitResponse>;
+}
+
+export interface OutfitListResponse {
+  outfits: OutfitResponse[];
+}
+
+/** List the user's outfits. `saved: true` returns only the saved collection. */
+export async function listOutfits(params: { saved?: boolean } = {}): Promise<OutfitResponse[]> {
+  const token = await getToken();
+  const query = new URLSearchParams();
+  if (params.saved !== undefined) query.set('saved', String(params.saved));
+  const response = await fetch(`${API_URL}/api/outfits?${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`List outfits failed (${response.status})`);
+  const data = (await response.json()) as OutfitListResponse;
+  return data.outfits;
+}
+
+export interface CreateOutfitItemInput {
+  item_id: string;
+  role: OutfitItemRole;
+  position?: number;
+}
+
+export interface CreateOutfitInput {
+  name?: string | null;
+  occasion?: string | null;
+  items: CreateOutfitItemInput[];
+}
+
+/** Manual builder — creates an outfit (saved into the collection on the server). */
+export async function createOutfit(body: CreateOutfitInput): Promise<OutfitResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/outfits`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Create outfit failed (${response.status}): ${text}`);
+  }
+  return response.json() as Promise<OutfitResponse>;
+}
+
+export async function saveOutfit(outfitId: string): Promise<OutfitResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/outfits/${outfitId}/save`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`Save outfit failed (${response.status})`);
+  return response.json() as Promise<OutfitResponse>;
+}
+
+export async function unsaveOutfit(outfitId: string): Promise<OutfitResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/outfits/${outfitId}/unsave`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(`Unsave outfit failed (${response.status})`);
   return response.json() as Promise<OutfitResponse>;
 }
 

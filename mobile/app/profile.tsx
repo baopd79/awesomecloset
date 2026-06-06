@@ -109,7 +109,11 @@ export default function ProfileScreen() {
         {/* collection */}
         <Kicker style={styles.sectionKicker}>Bộ sưu tập</Kicker>
         <View style={styles.card}>
-          <SettingRow icon="heart" label="Outfit đã lưu" value="Sắp ra mắt" />
+          <SettingRow
+            icon="heart"
+            label="Outfit đã lưu"
+            onPress={() => router.push('/saved')}
+          />
           <SettingRow
             icon="archive"
             label="Đồ đã lưu trữ"

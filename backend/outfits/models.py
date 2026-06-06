@@ -48,6 +48,9 @@ class Outfit(SQLModel, table=True):
     )
     ai_generated: bool = Field(default=False)
     ai_reasoning: str | None = None
+    # True when the user has saved this outfit into their collection ("Outfit đã lưu").
+    # Manual (builder) outfits start saved; AI outfits start unsaved until ♥.
+    is_saved: bool = Field(default=False)
     created_at: datetime = Field(
         default_factory=_utcnow,
         sa_column=Column(DateTime(timezone=True), default=_utcnow, nullable=False),

@@ -100,7 +100,10 @@ function SavedScreen() {
           </div>
           <div style={{ fontFamily: TOK.serif, fontSize: 23, color: TOK.ink, marginTop: 20 }}>Chưa lưu outfit nào</div>
           <p style={{ fontFamily: TOK.sans, fontSize: 14, lineHeight: 1.55, color: TOK.sub, margin: '8px 0 24px', textWrap: 'pretty' }}>Nhấn vào biểu tượng trái tim ở bất kỳ gợi ý nào để lưu lại xem sau.</p>
-          <PrimaryBtn icon="spark" onClick={() => { nav.goBack(); nav.navigate('suggest'); }}>Xem gợi ý outfit</PrimaryBtn>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+            <PrimaryBtn icon="spark" onClick={() => { nav.goBack(); nav.navigate('suggest'); }}>Xem gợi ý outfit</PrimaryBtn>
+            <button onClick={() => { nav.goBack(); nav.navigate('builder'); }} style={{ border: 'none', background: 'none', cursor: 'pointer', fontFamily: TOK.sans, fontSize: 14, fontWeight: 600, color: TOK.accent }}>Hoặc tự phối thủ công</button>
+          </div>
         </div>
       ) : (
         <div style={{ padding: '12px 16px 30px' }}>

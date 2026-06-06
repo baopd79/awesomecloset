@@ -28,7 +28,12 @@ function ClosetScreen() {
           <Kicker>{store.closet.length} món · 6 nhóm</Kicker>
           <div style={{ fontFamily: TOK.serif, fontSize: 34, color: TOK.ink, letterSpacing: -0.5, marginTop: 6 }}>Tủ đồ</div>
         </div>
-        <IconBtn name="filter" onClick={() => {}} />
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => nav.navigate('builder')} style={{ display: 'flex', alignItems: 'center', gap: 7, border: 'none', cursor: 'pointer', height: 42, padding: '0 16px', borderRadius: 999, background: TOK.ink, color: '#FBF8F2', fontFamily: TOK.sans, fontSize: 13.5, fontWeight: 600, boxShadow: TOK.shadow }}>
+            <Icon name="spark" size={16} color="#FBF8F2" fill/>Tự phối
+          </button>
+          <IconBtn name="filter" onClick={() => {}} />
+        </div>
       </div>
 
       {/* search */}

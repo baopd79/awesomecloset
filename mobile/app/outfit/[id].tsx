@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -12,9 +13,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { WearRatingSheet } from '@/components/WearRatingSheet';
 import { Icon } from '@/components/ui/Icon';
+import { useToast } from '@/components/ui/Toast';
 import {
   getOutfit,
+  saveOutfit,
   submitFeedback,
+  unsaveOutfit,
   wearOutfit,
   type OutfitItem,
   type OutfitItemRole,
@@ -35,6 +39,7 @@ const ROLE_LABEL: Record<OutfitItemRole, string> = {
 export default function OutfitScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const toast = useToast();
   const [outfit, setOutfit] = useState<OutfitResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
@@ -45,7 +50,9 @@ export default function OutfitScreen() {
     if (!id) return;
     setLoading(true);
     try {
-      setOutfit(await getOutfit(id));
+      const o = await getOutfit(id);
+      setOutfit(o);
+      setSaved(o.is_saved);
     } finally {
       setLoading(false);
     }
@@ -55,14 +62,31 @@ export default function OutfitScreen() {
 
   async function handleSave() {
     if (!outfit) return;
-    setSaved(true);
-    await submitFeedback(outfit.id, 'saved').catch(() => setSaved(false));
+    const next = !saved;
+    setSaved(next);
+    try {
+      if (next) await saveOutfit(outfit.id);
+      else await unsaveOutfit(outfit.id);
+      toast.show(next ? 'Đã lưu vào bộ sưu tập' : 'Đã bỏ khỏi bộ sưu tập');
+    } catch {
+      setSaved(!next);
+      toast.show('Có lỗi, thử lại nhé');
+    }
   }
 
-  async function handleDislike() {
+  function handleDislike() {
     if (!outfit) return;
-    await submitFeedback(outfit.id, 'disliked').catch(() => {});
-    router.back();
+    Alert.alert('Bỏ qua gợi ý này?', 'AI sẽ học để gợi ý hợp gu hơn.', [
+      { text: 'Huỷ', style: 'cancel' },
+      {
+        text: 'Bỏ qua',
+        style: 'destructive',
+        onPress: async () => {
+          await submitFeedback(outfit.id, 'disliked').catch(() => {});
+          router.back();
+        },
+      },
+    ]);
   }
 
   async function handleConfirmWear(rating: number | undefined) {
@@ -157,15 +181,17 @@ export default function OutfitScreen() {
             ))}
           </View>
 
-          {/* actions */}
+          {/* actions — dislike is AI-feedback only; hide it on self-built outfits */}
           <View style={styles.actions}>
             <Pressable style={styles.wearBtn} onPress={() => setWearOpen(true)}>
               <Icon name="wear" size={18} color="#FBF8F2" />
               <Text style={styles.wearText}>Mặc hôm nay</Text>
             </Pressable>
-            <Pressable style={styles.dislikeBtn} onPress={handleDislike}>
-              <Icon name="dislike" size={20} color={T.ink} />
-            </Pressable>
+            {outfit.ai_generated && (
+              <Pressable style={styles.dislikeBtn} onPress={handleDislike}>
+                <Icon name="dislike" size={20} color={T.ink} />
+              </Pressable>
+            )}
           </View>
         </View>
       </ScrollView>

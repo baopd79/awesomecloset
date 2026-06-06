@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { FirstClosetBadge } from '@/components/FirstClosetBadge';
@@ -13,7 +13,8 @@ import { Icon } from '@/components/ui/Icon';
 import { IconBtn } from '@/components/ui/IconBtn';
 import { Kicker } from '@/components/ui/Kicker';
 import { PrimaryBtn } from '@/components/ui/PrimaryBtn';
-import { submitFeedback, wearOutfit } from '@/lib/api';
+import { useToast } from '@/components/ui/Toast';
+import { saveOutfit, submitFeedback, unsaveOutfit, wearOutfit } from '@/lib/api';
 import { useClosetMilestone, CLOSET_REQUIRED } from '@/hooks/useClosetMilestone';
 import { useStreak } from '@/hooks/useStreak';
 import { useSuggest } from '@/hooks/useSuggest';
@@ -38,6 +39,7 @@ export default function HomeScreen() {
   const s = useSuggest();
   const streak = useStreak();
   const milestone = useClosetMilestone();
+  const toast = useToast();
 
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
@@ -54,20 +56,46 @@ export default function HomeScreen() {
     if (s.phase === 'results') void streak.recordView();
   }, [s.phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Seed heart state from the server (a cache-hit may return already-saved outfits).
+  useEffect(() => {
+    setSavedIds(new Set(s.outfits.filter((o) => o.is_saved).map((o) => o.id)));
+  }, [s.outfits]);
+
   async function handleSave(id: string) {
-    setSavedIds((prev) => new Set(prev).add(id));
-    await submitFeedback(id, 'saved').catch(() => {
+    const isSaved = savedIds.has(id);
+    setSavedIds((prev) => {
+      const next = new Set(prev);
+      if (isSaved) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    try {
+      if (isSaved) await unsaveOutfit(id);
+      else await saveOutfit(id);
+      toast.show(isSaved ? 'Đã bỏ khỏi bộ sưu tập' : 'Đã lưu vào bộ sưu tập');
+    } catch {
       setSavedIds((prev) => {
         const next = new Set(prev);
-        next.delete(id);
+        if (isSaved) next.add(id);
+        else next.delete(id);
         return next;
       });
-    });
+      toast.show('Có lỗi, thử lại nhé');
+    }
   }
 
-  async function handleDislike(id: string) {
-    setDismissedIds((prev) => new Set(prev).add(id));
-    await submitFeedback(id, 'disliked').catch(() => {});
+  function handleDislike(id: string) {
+    Alert.alert('Bỏ qua gợi ý này?', 'AI sẽ học để gợi ý hợp gu hơn.', [
+      { text: 'Huỷ', style: 'cancel' },
+      {
+        text: 'Bỏ qua',
+        style: 'destructive',
+        onPress: () => {
+          setDismissedIds((prev) => new Set(prev).add(id));
+          void submitFeedback(id, 'disliked').catch(() => {});
+        },
+      },
+    ]);
   }
 
   async function handleConfirmWear(rating: number | undefined) {

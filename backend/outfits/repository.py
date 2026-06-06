@@ -31,8 +31,11 @@ class OutfitRepository:
         result = await self._session.exec(stmt)
         return result.first()
 
-    async def list_outfits(self, user_id: UUID) -> list[Outfit]:
-        stmt = select(Outfit).where(Outfit.user_id == user_id).order_by(Outfit.created_at.desc())
+    async def list_outfits(self, user_id: UUID, saved: bool | None = None) -> list[Outfit]:
+        stmt = select(Outfit).where(Outfit.user_id == user_id)
+        if saved is not None:
+            stmt = stmt.where(Outfit.is_saved == saved)
+        stmt = stmt.order_by(Outfit.created_at.desc())
         result = await self._session.exec(stmt)
         return list(result.all())
 

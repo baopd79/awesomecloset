@@ -26,7 +26,8 @@ Build một AI personal closet app mobile-first cho người dùng Việt Nam. C
 | 15 | Home + Outfit UI | ✅ #25 |
 | 16 | Analytics (server-side + UI) | ✅ #26 |
 | 17 | Gamification + Onboarding | ✅ #27 |
-| 22 | Profile + Archive (Extras) | 🔨 feat/22-profile-archive (pending PR) |
+| 22 | Profile + Archive (Extras) | ✅ #28 |
+| 23 | Outfit Save + Manual Builder | 🔨 feat/23-outfit-save-builder |
 | 18–21 | Push, deploy, EAS | ⏳ |
 
 Backend Phase 1 + 2 gần khép — **Task 14 (suggest)** đã implement trên `feat/14-suggest` (chờ merge), khép Phase 2 core AI loop; mobile còn **Task 15**.
@@ -758,6 +759,40 @@ Màn Appearance screen yêu cầu runtime theme switching. Hiện tại `T = bui
 - `mobile/hooks/useCloset.ts`, `mobile/lib/api.ts`
 
 **Estimated scope:** S–M
+
+---
+
+### Task 23: Outfit Save + Manual Builder (Extras)
+
+**Description:** Đóng gap "endpoint mồ côi" phát hiện khi audit — backend outfits đã có `POST /outfits`, `GET /outfits`, `PATCH /{id}/items` nhưng mobile chưa tiêu thụ. Thêm bộ sưu tập "Outfit đã lưu" (♥ persist thật) + màn builder tự phối thủ công. Prototype mới: `app-builder.jsx` + `SavedScreen` trong `app-profile.jsx`.
+
+**Quyết định (chốt với user):**
+- **Saved = cột `outfits.is_saved`** (cách B), KHÔNG dùng `suggestion_feedback`. Lý do: builder phải vào bộ sưu tập ngay khi tạo; `suggestion_feedback='saved'` hiện **không ai đọc** (chỉ ghi) → bỏ double-write ở ♥.
+- Endpoint save/unsave **mirror archive/unarchive**: `POST /{id}/save` + `POST /{id}/unsave`, set tuyệt đối (idempotent, conflict-free).
+- Manual outfit `is_saved=True` lúc tạo; AI outfit `is_saved=False` đến khi ♥.
+- Role mapping builder→enum: footer→`shoes`, acc→`accessory`, áo khoác nằm slot `top` (không tách slot outerwear — đơn giản hoá prototype).
+- **Favorite item** (cột `clothing_items.is_favorite` + tab "Yêu thích" trong Closet) — **backlog**, chưa có prototype; orthogonal với archive, soft-delete tự loại khỏi mọi list (không cần clear flag).
+
+**Acceptance criteria:**
+- [x] Migration `007_outfits_is_saved.sql`: cột `is_saved` + index `(user_id, is_saved)`
+- [x] `POST /api/outfits/{id}/save` + `/unsave` (idempotent); `GET /api/outfits?saved=true`
+- [x] Builder mobile (`app/builder.tsx`): slot theo role, picker theo type, live preview, save sheet (tên + dịp) → `POST /outfits`
+- [x] Màn "Outfit đã lưu" (`app/saved.tsx`): grid collage, empty state, vào từ Profile
+- [x] ♥ ở Home + Outfit detail gọi `saveOutfit`/`unsaveOutfit` (seed từ `is_saved`), bỏ `submitFeedback('saved')`
+- [x] Nút "Tự phối" trên header Closet → `/builder`
+
+**Verification:**
+- [x] backend unit pass; integration tests viết (verify qua CI — local macOS asyncpg 0.31.0 lỗi `get_statusmsg()=None`, không chạy được DB tests)
+- [x] `npm run ts` xanh
+- [ ] Manual: build outfit → xuất hiện trong "Outfit đã lưu"; ♥ gợi ý → vào collection; bỏ ♥ → biến mất
+
+**Còn mồ côi sau task này (backlog):** `PATCH /outfits/{id}/items` (sửa items outfit), `DELETE /items/{id}` (xóa món — mobile chỉ archive), `PATCH /items/{id}/tags` (sửa tag/custom_tags), favorite-item.
+
+**Files touched:**
+- `backend/outfits/{models,schemas,repository,service,router}.py`, `supabase/migrations/007_outfits_is_saved.sql`, `tests/outfits/test_integration.py`, `tests/suggest/test_service.py`
+- `mobile/lib/api.ts`, `mobile/app/{builder,saved}.tsx`, `mobile/app/(tabs)/{index,closet}.tsx`, `mobile/app/{profile,outfit/[id]}.tsx`
+
+**Estimated scope:** M
 
 ---
 
