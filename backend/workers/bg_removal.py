@@ -1,7 +1,25 @@
 import asyncio
+import io
 from abc import ABC, abstractmethod
 
 import httpx
+from PIL import Image, ImageOps
+
+# u2net runs at 320x320 internally, so feeding a full-resolution phone photo (12MP+)
+# only inflates peak RAM/CPU without improving the matte. Downscaling the input first
+# keeps a single inference well under the worker's memory limit.
+_REMBG_MAX_EDGE = 1280
+
+
+def _prepare_for_rembg(image_bytes: bytes) -> bytes:
+    img = Image.open(io.BytesIO(image_bytes))
+    img = ImageOps.exif_transpose(img)  # honor phone EXIF orientation before stripping metadata
+    img = img.convert("RGB")
+    if max(img.size) > _REMBG_MAX_EDGE:
+        img.thumbnail((_REMBG_MAX_EDGE, _REMBG_MAX_EDGE), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=90)
+    return buf.getvalue()
 
 
 class BackgroundRemovalClient(ABC):
@@ -22,7 +40,11 @@ class RembgClient(BackgroundRemovalClient):
     async def remove(self, image_bytes: bytes) -> bytes:
         import rembg
 
-        return await asyncio.to_thread(rembg.remove, image_bytes, session=self._session)
+        def _run() -> bytes:
+            prepared = _prepare_for_rembg(image_bytes)
+            return rembg.remove(prepared, session=self._session)
+
+        return await asyncio.to_thread(_run)
 
 
 class RemoveBgApiClient(BackgroundRemovalClient):

@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from backend.items.models import ClothingItem, ProcessingStatus
-from backend.workers.bg_removal import RembgClient, RemoveBgApiClient
+from backend.workers.bg_removal import RembgClient, RemoveBgApiClient, _prepare_for_rembg
 from backend.workers.tasks import _derive_path, _make_thumbnail, _run_pipeline
 
 # --- helpers ---
@@ -38,6 +38,19 @@ def _make_item(user_id=None, item_id=None) -> ClothingItem:
 
 
 # --- BackgroundRemovalClient ---
+
+
+def test_prepare_for_rembg_downscales_large_image():
+    out = _prepare_for_rembg(_make_jpeg_bytes(3000, 2000))
+    img = Image.open(io.BytesIO(out))
+    assert max(img.size) == 1280  # longest edge clamped, aspect ratio preserved
+    assert img.format == "JPEG"
+
+
+def test_prepare_for_rembg_keeps_small_image():
+    out = _prepare_for_rembg(_make_jpeg_bytes(800, 600))
+    img = Image.open(io.BytesIO(out))
+    assert img.size == (800, 600)  # below the cap → not upscaled
 
 
 @pytest.mark.asyncio
