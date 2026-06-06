@@ -111,6 +111,28 @@ export async function unarchiveItem(itemId: string): Promise<ItemResponse> {
   return response.json() as Promise<ItemResponse>;
 }
 
+export interface TagsUpdate {
+  type?: string | null;
+  style?: string[] | null;
+  season?: string[] | null;
+  occasion?: string[] | null;
+  custom_tags?: string[] | null;
+}
+
+export async function updateTags(itemId: string, body: TagsUpdate): Promise<ItemResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/items/${itemId}/tags`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Update tags failed (${response.status}): ${text}`);
+  }
+  return response.json() as Promise<ItemResponse>;
+}
+
 export async function deleteItem(itemId: string): Promise<void> {
   const token = await getToken();
   const response = await fetch(`${API_URL}/api/items/${itemId}`, {
