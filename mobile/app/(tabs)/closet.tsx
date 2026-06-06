@@ -33,9 +33,15 @@ export default function ClosetScreen() {
                 <Kicker>{readyCount} món</Kicker>
                 <Text style={styles.title}>Tủ đồ</Text>
               </View>
-              <Pressable style={styles.iconBtn}>
-                <Icon name="filter" size={20} color={T.ink2} />
-              </Pressable>
+              <View style={styles.headerActions}>
+                <Pressable style={styles.buildBtn} onPress={() => router.push('/builder')}>
+                  <Icon name="spark" size={16} color="#FBF8F2" />
+                  <Text style={styles.buildText}>Tự phối</Text>
+                </Pressable>
+                <Pressable style={styles.iconBtn}>
+                  <Icon name="filter" size={20} color={T.ink2} />
+                </Pressable>
+              </View>
             </View>
 
             {/* search bar */}
@@ -103,6 +109,22 @@ const styles = StyleSheet.create({
     color: T.ink,
     letterSpacing: -0.5,
     marginTop: 4,
+  },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  buildBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    height: 40,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: T.ink,
+    ...T.shadow,
+  },
+  buildText: {
+    fontFamily: 'BeVietnamPro_600SemiBold',
+    fontSize: 13.5,
+    color: '#FBF8F2',
   },
   iconBtn: {
     width: 40,

@@ -15,6 +15,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ToastProvider } from '@/components/ui/Toast';
 import { useSession } from '@/hooks/useSession';
 
 interface OnboardingCtx { completeOnboarding: () => void }
@@ -69,7 +70,9 @@ export default function RootLayout() {
       segments[0] === 'item' ||
       segments[0] === 'outfit' ||
       segments[0] === 'profile' ||
-      segments[0] === 'archive'; // screens pushed on top of tabs
+      segments[0] === 'archive' ||
+      segments[0] === 'builder' ||
+      segments[0] === 'saved'; // screens pushed on top of tabs
 
     if (!session) {
       if (!inAuth) router.replace('/(auth)');
@@ -85,7 +88,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <OnboardingContext.Provider value={{ completeOnboarding: () => setHasOnboarded(true) }}>
-        <Stack screenOptions={{ headerShown: false }} />
+        <ToastProvider>
+          <Stack screenOptions={{ headerShown: false }} />
+        </ToastProvider>
       </OnboardingContext.Provider>
     </GestureHandlerRootView>
   );
