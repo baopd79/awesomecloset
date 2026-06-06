@@ -49,8 +49,9 @@ async def create_outfit(
 async def list_outfits(
     user_id: CurrentUserDep,
     svc: ServiceDep,
+    saved: bool | None = None,
 ) -> OutfitListResponse:
-    outfits = await svc.list_outfits(UUID(user_id))
+    outfits = await svc.list_outfits(UUID(user_id), saved=saved)
     return OutfitListResponse(outfits=outfits)
 
 
@@ -71,6 +72,24 @@ async def update_outfit_items(
     svc: ServiceDep,
 ) -> OutfitResponse:
     return await svc.update_outfit_items(outfit_id, UUID(user_id), body)
+
+
+@router.post("/{outfit_id}/save", status_code=status.HTTP_200_OK, response_model=OutfitResponse)
+async def save_outfit(
+    outfit_id: UUID,
+    user_id: CurrentUserDep,
+    svc: ServiceDep,
+) -> OutfitResponse:
+    return await svc.save_outfit(outfit_id, UUID(user_id))
+
+
+@router.post("/{outfit_id}/unsave", status_code=status.HTTP_200_OK, response_model=OutfitResponse)
+async def unsave_outfit(
+    outfit_id: UUID,
+    user_id: CurrentUserDep,
+    svc: ServiceDep,
+) -> OutfitResponse:
+    return await svc.unsave_outfit(outfit_id, UUID(user_id))
 
 
 @router.post(

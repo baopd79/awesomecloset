@@ -44,6 +44,7 @@ def _fake_outfit_response(outfit_id: uuid.UUID | None = None) -> OutfitResponse:
         occasion=None,
         ai_generated=True,
         ai_reasoning="r",
+        is_saved=False,
         items=[],
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),

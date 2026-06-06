@@ -53,7 +53,8 @@ class OutfitService:
         items_data = await self._validate_items(user_id, data.items)
         _warn_missing_role(data.items)
 
-        outfit = Outfit(user_id=user_id, name=data.name, occasion=data.occasion)
+        # Manual outfits are saved into the collection on creation.
+        outfit = Outfit(user_id=user_id, name=data.name, occasion=data.occasion, is_saved=True)
         outfit_item_models = [
             OutfitItem(
                 outfit_id=outfit.id,
@@ -79,8 +80,8 @@ class OutfitService:
         pairs = _pair_items(outfit_items, clothing_items)
         return await self._build_response(outfit, pairs)
 
-    async def list_outfits(self, user_id: UUID) -> list[OutfitResponse]:
-        outfits = await self._repo.list_outfits(user_id)
+    async def list_outfits(self, user_id: UUID, saved: bool | None = None) -> list[OutfitResponse]:
+        outfits = await self._repo.list_outfits(user_id, saved=saved)
         results = []
         for outfit in outfits:
             outfit_items, clothing_items = await self._fetch_items_for_outfit(outfit.id, user_id)
@@ -164,6 +165,22 @@ class OutfitService:
             feedback = await self._repo.create_feedback(feedback)
 
         return FeedbackResponse.model_validate(feedback)
+
+    async def save_outfit(self, outfit_id: UUID, user_id: UUID) -> OutfitResponse:
+        return await self._set_saved(outfit_id, user_id, True)
+
+    async def unsave_outfit(self, outfit_id: UUID, user_id: UUID) -> OutfitResponse:
+        return await self._set_saved(outfit_id, user_id, False)
+
+    async def _set_saved(self, outfit_id: UUID, user_id: UUID, saved: bool) -> OutfitResponse:
+        # Absolute set (idempotent) — mirrors item archive/unarchive, conflict-free.
+        outfit = await self._get_or_raise(outfit_id, user_id)
+        async with transaction(self._session):
+            outfit.is_saved = saved
+            outfit = await self._repo.update_outfit(outfit)
+        outfit_items, clothing_items = await self._fetch_items_for_outfit(outfit_id, user_id)
+        pairs = _pair_items(outfit_items, clothing_items)
+        return await self._build_response(outfit, pairs)
 
     async def create_ai_outfit(
         self,
@@ -309,6 +326,7 @@ class OutfitService:
             occasion=outfit.occasion,
             ai_generated=outfit.ai_generated,
             ai_reasoning=outfit.ai_reasoning,
+            is_saved=outfit.is_saved,
             items=item_responses,
             created_at=outfit.created_at,
             updated_at=outfit.updated_at,

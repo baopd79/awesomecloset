@@ -279,6 +279,94 @@ async def test_wear_outfit_not_found_for_other_user(db_session, user_id, other_u
     assert exc.value.code == "OUTFIT_NOT_FOUND"
 
 
+@pytest.mark.asyncio
+async def test_manual_outfit_saved_on_creation(db_session, user_id):
+    """Builder outfits land in the saved collection immediately."""
+    item = await _create_ready_item(db_session, user_id)
+    svc = _make_service(db_session)
+    with patch("backend.outfits.service.generate_collage", AsyncMock(return_value=b"jpeg")):
+        created = await svc.create_outfit(
+            user_id, CreateOutfitIn(items=[OutfitItemIn(item_id=item.id, role=OutfitItemRole.top)])
+        )
+    assert created.is_saved is True
+
+
+@pytest.mark.asyncio
+async def test_ai_outfit_not_saved_by_default(db_session, user_id):
+    item = await _create_ready_item(db_session, user_id)
+    svc = _make_service(db_session)
+    with patch("backend.outfits.service.generate_collage", AsyncMock(return_value=b"jpeg")):
+        created = await svc.create_ai_outfit(
+            user_id,
+            items_in=[OutfitItemIn(item_id=item.id, role=OutfitItemRole.top)],
+            reasoning="warm + casual",
+            occasion=None,
+            weather_context=None,
+        )
+    assert created.is_saved is False
+
+
+@pytest.mark.asyncio
+async def test_save_unsave_is_idempotent(db_session, user_id):
+    item = await _create_ready_item(db_session, user_id)
+    svc = _make_service(db_session)
+    with patch("backend.outfits.service.generate_collage", AsyncMock(return_value=b"jpeg")):
+        created = await svc.create_ai_outfit(
+            user_id,
+            items_in=[OutfitItemIn(item_id=item.id, role=OutfitItemRole.top)],
+            reasoning="r",
+            occasion=None,
+            weather_context=None,
+        )
+
+    # Save twice → still saved (absolute set, not toggle)
+    await svc.save_outfit(created.id, user_id)
+    saved = await svc.save_outfit(created.id, user_id)
+    assert saved.is_saved is True
+
+    # Unsave twice → still unsaved
+    await svc.unsave_outfit(created.id, user_id)
+    unsaved = await svc.unsave_outfit(created.id, user_id)
+    assert unsaved.is_saved is False
+
+
+@pytest.mark.asyncio
+async def test_list_outfits_saved_filter(db_session, user_id):
+    item = await _create_ready_item(db_session, user_id)
+    svc = _make_service(db_session)
+    with patch("backend.outfits.service.generate_collage", AsyncMock(return_value=b"jpeg")):
+        manual = await svc.create_outfit(
+            user_id, CreateOutfitIn(items=[OutfitItemIn(item_id=item.id, role=OutfitItemRole.top)])
+        )
+        await svc.create_ai_outfit(
+            user_id,
+            items_in=[OutfitItemIn(item_id=item.id, role=OutfitItemRole.top)],
+            reasoning="r",
+            occasion=None,
+            weather_context=None,
+        )
+
+    saved_only = await svc.list_outfits(user_id, saved=True)
+    all_outfits = await svc.list_outfits(user_id)
+
+    assert {o.id for o in saved_only} == {manual.id}
+    assert len(all_outfits) == 2
+
+
+@pytest.mark.asyncio
+async def test_save_outfit_not_found_for_other_user(db_session, user_id, other_user_id):
+    item = await _create_ready_item(db_session, user_id)
+    svc = _make_service(db_session)
+    with patch("backend.outfits.service.generate_collage", AsyncMock(return_value=b"jpeg")):
+        created = await svc.create_outfit(
+            user_id, CreateOutfitIn(items=[OutfitItemIn(item_id=item.id, role=OutfitItemRole.top)])
+        )
+
+    with pytest.raises(AppException) as exc:
+        await svc.save_outfit(created.id, other_user_id)
+    assert exc.value.code == "OUTFIT_NOT_FOUND"
+
+
 # --- HTTP endpoint tests (DB-independent only) ---
 
 
