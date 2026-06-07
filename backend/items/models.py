@@ -65,6 +65,14 @@ class ProcessingStatus(str, Enum):
     failed = "failed"
 
 
+class TagStatus(str, Enum):
+    # Tagging state, independent of processing_status. `tagged` <=> the item has a type.
+    untagged = "untagged"
+    tagging = "tagging"
+    tagged = "tagged"
+    tag_failed = "tag_failed"
+
+
 class ClothingItem(SQLModel, table=True):
     """Core entity. FK constraints and RLS enforced by DB migration, not SQLAlchemy."""
 
@@ -84,6 +92,14 @@ class ClothingItem(SQLModel, table=True):
         ),
     )
     processing_error: str | None = None
+    tag_status: TagStatus = Field(
+        default=TagStatus.untagged,
+        sa_column=Column(
+            SAEnum(TagStatus, name="tag_status", create_type=False),
+            nullable=False,
+            default=TagStatus.untagged,
+        ),
+    )
     type: ClothingType | None = Field(
         default=None,
         sa_column=Column(

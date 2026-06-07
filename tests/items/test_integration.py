@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from backend.core.database import transaction
 from backend.core.exceptions import AppException
-from backend.items.models import ClothingItem, ClothingType, ProcessingStatus
+from backend.items.models import ClothingItem, ClothingType, ProcessingStatus, TagStatus
 from backend.items.repository import ItemRepository
 from backend.items.schemas import SortBy
 from backend.items.service import ItemService
@@ -48,6 +48,33 @@ async def test_create_and_get_item(repo, db_session, test_user_id):
     assert fetched is not None
     assert fetched.processing_status == ProcessingStatus.pending
     assert fetched.deleted_at is None
+
+
+@pytest.mark.asyncio
+async def test_tag_status_defaults_untagged(repo, db_session, test_user_id):
+    item = ClothingItem(user_id=test_user_id, processing_status=ProcessingStatus.pending)
+    async with transaction(db_session):
+        created = await repo.create(item)
+
+    fetched = await repo.get_by_id(created.id, test_user_id)
+    assert fetched is not None
+    assert fetched.tag_status == TagStatus.untagged
+
+
+@pytest.mark.asyncio
+async def test_tag_status_round_trips(repo, db_session, test_user_id):
+    item = ClothingItem(
+        user_id=test_user_id,
+        processing_status=ProcessingStatus.ready,
+        type=ClothingType.shirt,
+        tag_status=TagStatus.tagged,
+    )
+    async with transaction(db_session):
+        created = await repo.create(item)
+
+    fetched = await repo.get_by_id(created.id, test_user_id)
+    assert fetched is not None
+    assert fetched.tag_status == TagStatus.tagged
 
 
 @pytest.mark.asyncio

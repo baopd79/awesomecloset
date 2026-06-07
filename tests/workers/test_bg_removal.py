@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from PIL import Image
 
-from backend.items.models import ClothingItem, ProcessingStatus
+from backend.items.models import ClothingItem, ProcessingStatus, TagStatus
 from backend.workers.bg_removal import RembgClient, RemoveBgApiClient, _prepare_for_rembg
 from backend.workers.tasks import _derive_path, _make_thumbnail, _run_pipeline
 
@@ -177,6 +177,7 @@ async def test_run_pipeline_happy_path():
     assert ctx["storage"].upload.await_count >= 2  # processed + thumbnail
     assert item.processed_url is not None
     assert item.thumbnail_url is not None
+    assert item.tag_status == TagStatus.tagged
 
 
 @pytest.mark.asyncio
