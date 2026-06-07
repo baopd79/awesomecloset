@@ -5,6 +5,8 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 export type ProcessingStatus = 'pending' | 'removing_bg' | 'tagging' | 'ready' | 'failed';
 
+export type TagStatus = 'untagged' | 'tagging' | 'tagged' | 'tag_failed';
+
 export interface ItemResponse {
   id: string;
   user_id: string;
@@ -13,6 +15,7 @@ export interface ItemResponse {
   thumbnail_url: string | null;
   processing_status: ProcessingStatus;
   processing_error: string | null;
+  tag_status: TagStatus;
   type: string | null;
   colors: unknown[] | null;
   style: string[] | null;
@@ -129,6 +132,20 @@ export async function updateTags(itemId: string, body: TagsUpdate): Promise<Item
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`Update tags failed (${response.status}): ${text}`);
+  }
+  return response.json() as Promise<ItemResponse>;
+}
+
+/** Kick off on-demand AI tagging (POST /items/{id}/tag). Item must be `ready`. */
+export async function requestTagging(itemId: string): Promise<ItemResponse> {
+  const token = await getToken();
+  const response = await fetch(`${API_URL}/api/items/${itemId}/tag`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Tag request failed (${response.status}): ${text}`);
   }
   return response.json() as Promise<ItemResponse>;
 }

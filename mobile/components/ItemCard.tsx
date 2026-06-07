@@ -95,9 +95,14 @@ export function ItemCard({ item, onArchive }: Props) {
               ? (TYPE_LABEL[item.type ?? ''] ?? 'Món đồ')
               : 'Đang xử lý…'}
           </Text>
-          {isReady && item.occasion && item.occasion.length > 0 && (
+          {isReady && item.tag_status === 'tagged' && item.occasion && item.occasion.length > 0 && (
             <Text style={styles.sub} numberOfLines={1}>
               {OCCASION_LABEL[item.occasion[0]] ?? item.occasion[0]}
+            </Text>
+          )}
+          {isReady && item.tag_status !== 'tagged' && (
+            <Text style={styles.untagged} numberOfLines={1}>
+              {item.tag_status === 'tagging' ? 'Đang gắn thẻ…' : 'Chưa gắn thẻ'}
             </Text>
           )}
           {isFailed && (
@@ -182,6 +187,12 @@ const styles = StyleSheet.create({
     fontFamily: 'BeVietnamPro_600SemiBold',
     fontSize: 11,
     color: T.danger,
+    marginTop: 4,
+  },
+  untagged: {
+    fontFamily: 'BeVietnamPro_600SemiBold',
+    fontSize: 11,
+    color: T.accent,
     marginTop: 4,
   },
   errorState: {

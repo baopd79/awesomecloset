@@ -1,10 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import type { ProcessingStatus } from '@/lib/api';
+import type { ProcessingStatus, TagStatus } from '@/lib/api';
+
+export interface RealtimeItemUpdate {
+  processing_status: ProcessingStatus;
+  tag_status: TagStatus;
+  processing_error: string | null;
+}
 
 export function useRealtimeItem(
   itemId: string | null,
-  onUpdate: (status: ProcessingStatus, error: string | null) => void,
+  onUpdate: (rec: RealtimeItemUpdate) => void,
 ) {
   const onUpdateRef = useRef(onUpdate);
   useEffect(() => { onUpdateRef.current = onUpdate; });
@@ -18,8 +24,12 @@ export function useRealtimeItem(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'clothing_items', filter: `id=eq.${itemId}` },
         (payload) => {
-          const rec = payload.new as { processing_status: ProcessingStatus; processing_error: string | null };
-          onUpdateRef.current(rec.processing_status, rec.processing_error ?? null);
+          const rec = payload.new as RealtimeItemUpdate;
+          onUpdateRef.current({
+            processing_status: rec.processing_status,
+            tag_status: rec.tag_status,
+            processing_error: rec.processing_error ?? null,
+          });
         },
       )
       .subscribe();
