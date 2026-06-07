@@ -19,10 +19,11 @@ from backend.items.models import (
 )
 from backend.items.schemas import SortBy
 
+# Only the bg pipeline is auto-recovered. Tagging is on-demand (tag_status), so a stuck
+# tagging job is NOT swept — the user re-triggers it, which avoids an auto-retry quota loop.
 _ORPHAN_STATUSES = [
     ProcessingStatus.pending,
     ProcessingStatus.removing_bg,
-    ProcessingStatus.tagging,
 ]
 _ORPHAN_THRESHOLD_MINUTES = 10
 _DEFAULT_LIMIT = 30
@@ -190,6 +191,11 @@ class ItemRepository:
     ) -> None:
         item.processing_status = status
         item.processing_error = error
+        self._session.add(item)
+        await self._session.flush()
+
+    async def update_tag_status(self, item: ClothingItem, tag_status: TagStatus) -> None:
+        item.tag_status = tag_status
         self._session.add(item)
         await self._session.flush()
 

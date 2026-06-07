@@ -15,14 +15,13 @@ BUCKET = "closet-images"
 THUMBNAIL_SIZE = (400, 400)
 _MAX_TRIES = 3
 # Gemini free tier caps requests-per-minute (~15 RPM). When draining a backlog the worker
-# trips it; defer into the next minute window instead of burning the item to `failed`.
+# trips it; defer into the next minute window instead of failing the tag attempt.
 _RATE_LIMIT_DEFER_S = 60
-# User-facing (Vietnamese) message when tagging gives up on a persistent rate limit.
-_RATE_LIMIT_FAILED_MSG = "AI tạm hết hạn mức, thử lại sau"
 
 
 async def _process_item(ctx: dict, item_id: str) -> None:
-    """Main processing pipeline for a clothing item. ctx carries shared resources initialized in WorkerSettings.on_startup."""
+    """Background-removal pipeline for a clothing item. Ends at `ready` (untagged) — tagging
+    is a separate on-demand job (tag_item). ctx carries resources from WorkerSettings.on_startup."""
     job_try = ctx.get("job_try", 1)
     logger.info(f"process_item start | job_id={ctx['job_id']} item_id={item_id} try={job_try}")
 
@@ -39,7 +38,7 @@ async def _run_pipeline(ctx: dict, session: AsyncSession, item_id: UUID) -> None
         logger.warning(f"process_item | item not found, skipping | item_id={item_id}")
         return
 
-    # --- Step 1: background removal ---
+    # --- Background removal (the only step; tagging is on-demand via tag_item) ---
     async with transaction(session):
         await repo.update_status(item, ProcessingStatus.removing_bg)
 
@@ -74,38 +73,68 @@ async def _run_pipeline(ctx: dict, session: AsyncSession, item_id: UUID) -> None
     async with transaction(session):
         item.processed_url = processed_path
         item.thumbnail_url = thumbnail_path
-        await repo.update_status(item, ProcessingStatus.tagging)
+        await repo.update_status(item, ProcessingStatus.ready)
 
-    # --- Step 2: Gemini tagging ---
+    logger.info(f"process_item complete (bg) | item_id={item_id}")
+
+
+async def _tag_item(ctx: dict, item_id: str) -> None:
+    """On-demand AI tagging job. Triggered by POST /items/{id}/tag, never auto-run, so a
+    failure does NOT loop via orphan recovery (which would burn Gemini quota)."""
+    job_try = ctx.get("job_try", 1)
+    logger.info(f"tag_item start | job_id={ctx['job_id']} item_id={item_id} try={job_try}")
+
+    async with ctx["session_factory"]() as session:
+        await _run_tagging(ctx, session, UUID(item_id))
+
+
+async def _run_tagging(ctx: dict, session: AsyncSession, item_id: UUID) -> None:
+    repo = ItemRepository(session)
+    storage = ctx["storage"]
+
+    item = await repo.get_by_id_system(item_id)
+    if item is None:
+        logger.warning(f"tag_item | item not found, skipping | item_id={item_id}")
+        return
+    if item.processing_status != ProcessingStatus.ready or not item.thumbnail_url:
+        logger.warning(
+            f"tag_item | item not ready, skipping | item_id={item_id} "
+            f"status={item.processing_status}"
+        )
+        return
+
+    # If the item already has a type, this is a re-tag: keep the existing tags on failure
+    # (the item stays usable) rather than dropping it to tag_failed.
+    had_tags = item.type is not None
+
     try:
         thumbnail_bytes = await storage.download(BUCKET, item.thumbnail_url)
         tags = await ctx["gemini_client"].tag_image(thumbnail_bytes)
     except ResourceExhausted as exc:
-        # Rate-limited by Gemini's free tier. A burst over the per-minute cap clears with a
-        # short defer; but an exhausted *daily* quota 429s every request until midnight reset,
-        # and deferring forever would let orphan recovery re-enqueue the item every 10 min and
-        # burn quota in an endless loop. So defer while tries remain, then give up to `failed`
-        # — stops the loop and lets the user retry later (after reset / billing).
+        # Gemini rate limit: defer while tries remain (per-minute bursts clear quickly); once
+        # exhausted, give up. No orphan recovery re-runs tagging, so there is no quota loop.
         job_try = ctx.get("job_try", 1)
         if job_try >= _MAX_TRIES:
             logger.error(
-                f"tagging rate-limited, giving up after {job_try} tries | "
+                f"tag_item rate-limited, giving up after {job_try} tries | "
                 f"item_id={item_id} | {exc}"
             )
             async with transaction(session):
-                await repo.update_status(
-                    item, ProcessingStatus.failed, error=_RATE_LIMIT_FAILED_MSG
+                await repo.update_tag_status(
+                    item, TagStatus.tagged if had_tags else TagStatus.tag_failed
                 )
             raise
         logger.warning(
-            f"tagging rate-limited, deferring {_RATE_LIMIT_DEFER_S}s (try {job_try}) | "
+            f"tag_item rate-limited, deferring {_RATE_LIMIT_DEFER_S}s (try {job_try}) | "
             f"item_id={item_id} | {exc}"
         )
         raise Retry(defer=_RATE_LIMIT_DEFER_S) from exc
     except Exception as exc:
-        logger.error(f"tagging failed | item_id={item_id} error={exc}")
+        logger.error(f"tag_item failed | item_id={item_id} error={exc}")
         async with transaction(session):
-            await repo.update_status(item, ProcessingStatus.failed, error=str(exc))
+            await repo.update_tag_status(
+                item, TagStatus.tagged if had_tags else TagStatus.tag_failed
+            )
         raise
 
     async with transaction(session):
@@ -114,10 +143,9 @@ async def _run_pipeline(ctx: dict, session: AsyncSession, item_id: UUID) -> None
         item.style = tags.style
         item.season = tags.season
         item.occasion = tags.occasion
-        item.tag_status = TagStatus.tagged
-        await repo.update_status(item, ProcessingStatus.ready)
+        await repo.update_tag_status(item, TagStatus.tagged)
 
-    logger.info(f"process_item complete | item_id={item_id}")
+    logger.info(f"tag_item complete | item_id={item_id}")
 
 
 def _derive_path(original_url: str, filename: str) -> str:
@@ -142,3 +170,6 @@ def _make_thumbnail(png_bytes: bytes) -> bytes:
 # silently dropped (the item stalls at pending). Dropping results lets re-enqueue work
 # immediately; in-flight dedup still holds via the job key while a job is queued/running.
 process_item = func(_process_item, name="process_item", max_tries=_MAX_TRIES, keep_result=0)
+# Same keep_result=0 rationale: status lives in the DB (tag_status), and we re-enqueue with a
+# deterministic id when the user retries tagging, so a lingering result key must not block it.
+tag_item = func(_tag_item, name="tag_item", max_tries=_MAX_TRIES, keep_result=0)

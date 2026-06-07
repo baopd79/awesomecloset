@@ -239,6 +239,96 @@ async def test_delete_item_calls_soft_delete():
     repo.soft_delete.assert_awaited_once_with(item)
 
 
+# --- request_ai_tagging ---
+
+
+def _tagging_repo(item):
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=item)
+
+    async def _set_tag(it, ts):
+        it.tag_status = ts
+
+    repo.update_tag_status = AsyncMock(side_effect=_set_tag)
+    return repo
+
+
+@pytest.mark.asyncio
+async def test_request_ai_tagging_enqueues_tag_job():
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    item = ClothingItem(id=item_id, user_id=user_id, processing_status=ProcessingStatus.ready)
+
+    repo = _tagging_repo(item)
+    arq = MagicMock()
+    arq.enqueue_job = AsyncMock()
+    svc = _make_service(repo=repo, arq=arq)
+
+    await svc.request_ai_tagging(item_id, user_id)
+
+    assert item.tag_status == TagStatus.tagging
+    arq.enqueue_job.assert_awaited_once_with(
+        "tag_item", str(item_id), _job_id=f"tag_item:{item_id}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_request_ai_tagging_rejects_non_ready_item():
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    item = ClothingItem(id=item_id, user_id=user_id, processing_status=ProcessingStatus.removing_bg)
+
+    repo = _tagging_repo(item)
+    arq = MagicMock()
+    arq.enqueue_job = AsyncMock()
+    svc = _make_service(repo=repo, arq=arq)
+
+    with pytest.raises(AppException) as exc:
+        await svc.request_ai_tagging(item_id, user_id)
+
+    assert exc.value.code == "ITEM_NOT_READY"
+    arq.enqueue_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_request_ai_tagging_is_noop_when_already_tagging():
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    item = ClothingItem(
+        id=item_id,
+        user_id=user_id,
+        processing_status=ProcessingStatus.ready,
+        tag_status=TagStatus.tagging,
+    )
+
+    repo = _tagging_repo(item)
+    arq = MagicMock()
+    arq.enqueue_job = AsyncMock()
+    svc = _make_service(repo=repo, arq=arq)
+
+    await svc.request_ai_tagging(item_id, user_id)
+    arq.enqueue_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_request_ai_tagging_reverts_when_enqueue_fails():
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    item = ClothingItem(
+        id=item_id, user_id=user_id, processing_status=ProcessingStatus.ready
+    )  # no type → reverts to untagged
+
+    repo = _tagging_repo(item)
+    arq = MagicMock()
+    arq.enqueue_job = AsyncMock(side_effect=RuntimeError("redis down"))
+    svc = _make_service(repo=repo, arq=arq)
+
+    with pytest.raises(RuntimeError):
+        await svc.request_ai_tagging(item_id, user_id)
+
+    assert item.tag_status == TagStatus.untagged
+
+
 # --- archive / unarchive ---
 
 

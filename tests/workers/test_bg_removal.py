@@ -177,7 +177,9 @@ async def test_run_pipeline_happy_path():
     assert ctx["storage"].upload.await_count >= 2  # processed + thumbnail
     assert item.processed_url is not None
     assert item.thumbnail_url is not None
-    assert item.tag_status == TagStatus.tagged
+    # bg pipeline no longer tags — tagging is on-demand (see test_tagging.py)
+    assert item.tag_status == TagStatus.untagged
+    ctx["gemini_client"].tag_image.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -214,53 +216,6 @@ async def test_run_pipeline_sets_failed_when_both_clients_fail():
     calls = repo.update_status.call_args_list
     last_status = calls[-1].args[1]
     assert last_status == ProcessingStatus.failed
-
-
-@pytest.mark.asyncio
-async def test_run_pipeline_defers_on_tagging_rate_limit():
-    # Gemini 429 with tries remaining must defer (ARQ Retry), keep `tagging`, not `failed`.
-    from arq import Retry
-    from google.api_core.exceptions import ResourceExhausted
-
-    item = _make_item()
-    ctx = _make_ctx()  # no job_try → defaults to 1, below max
-    ctx["gemini_client"].tag_image = AsyncMock(side_effect=ResourceExhausted("rate limited"))
-    session = MagicMock()
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-
-    repo = _make_repo(item)
-    with patch("backend.workers.tasks.ItemRepository", return_value=repo):
-        with pytest.raises(Retry):
-            await _run_pipeline(ctx, session, item.id)
-
-    statuses = [c.args[1] for c in repo.update_status.call_args_list]
-    assert ProcessingStatus.failed not in statuses
-    assert statuses[-1] == ProcessingStatus.tagging
-
-
-@pytest.mark.asyncio
-async def test_run_pipeline_fails_when_rate_limit_exhausts_tries():
-    # On the last try a persistent 429 (exhausted daily quota) must give up to `failed` —
-    # not defer forever — so orphan recovery stops re-enqueueing and burning quota.
-    from google.api_core.exceptions import ResourceExhausted
-
-    from backend.workers.tasks import _MAX_TRIES
-
-    item = _make_item()
-    ctx = _make_ctx()
-    ctx["job_try"] = _MAX_TRIES
-    ctx["gemini_client"].tag_image = AsyncMock(side_effect=ResourceExhausted("quota exhausted"))
-    session = MagicMock()
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-
-    repo = _make_repo(item)
-    with patch("backend.workers.tasks.ItemRepository", return_value=repo):
-        with pytest.raises(ResourceExhausted):
-            await _run_pipeline(ctx, session, item.id)
-
-    assert repo.update_status.call_args_list[-1].args[1] == ProcessingStatus.failed
 
 
 @pytest.mark.asyncio
