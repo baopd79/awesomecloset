@@ -9,7 +9,6 @@
 ![Gemini Flash](https://img.shields.io/badge/Gemini-Flash%20multimodal-4285F4?logo=google&logoColor=white)
 ![ARQ + Redis](https://img.shields.io/badge/ARQ-Redis%20jobs-DC382D?logo=redis&logoColor=white)
 
-<!-- TODO: thay 4 ảnh thật từ simulator -->
 <p align="center">
   <img src="docs/images/home.png" width="220" alt="Hôm nay" />
   <img src="docs/images/closet.png" width="220" alt="Tủ đồ" />
