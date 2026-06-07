@@ -16,6 +16,7 @@ from backend.items.models import (
     ClothingSeason,
     ClothingType,
     ProcessingStatus,
+    TagStatus,
 )
 from backend.items.repository import ItemRepository
 from backend.items.schemas import SortBy, TagsUpdateRequest
@@ -128,6 +129,9 @@ class ItemService:
         updates = body.model_dump(exclude_unset=True)
         for field, value in updates.items():
             setattr(item, field, value)
+        # tagged <=> has a type. Recompute so a manual edit moves the item in/out of the
+        # tagged pool (which feeds suggestions and the closet gate) without a separate step.
+        item.tag_status = TagStatus.tagged if item.type is not None else TagStatus.untagged
         async with transaction(self._session):
             item = await self._repo.update(item)
         await self._sign_items([item])

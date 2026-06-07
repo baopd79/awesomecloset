@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from backend.core.exceptions import AppException
-from backend.items.models import ClothingItem, ProcessingStatus
+from backend.items.models import ClothingItem, ClothingType, ProcessingStatus, TagStatus
 from backend.items.schemas import SortBy, TagsUpdateRequest
 from backend.items.service import MAX_UPLOAD_BYTES, ItemService
 
@@ -185,6 +185,40 @@ async def test_update_tags_applies_changes():
 
     repo.update.assert_awaited_once()
     assert result.custom_tags == ["vintage"]
+
+
+@pytest.mark.asyncio
+async def test_update_tags_marks_tagged_when_type_set():
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    item = ClothingItem(id=item_id, user_id=user_id)  # tag_status defaults to untagged
+
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=item)
+    repo.update = AsyncMock(side_effect=lambda i: i)
+    svc = _make_service(repo=repo)
+
+    await svc.update_tags(item_id, user_id, TagsUpdateRequest(type=ClothingType.shirt))
+
+    assert item.tag_status == TagStatus.tagged
+
+
+@pytest.mark.asyncio
+async def test_update_tags_marks_untagged_when_type_cleared():
+    user_id = uuid.uuid4()
+    item_id = uuid.uuid4()
+    item = ClothingItem(
+        id=item_id, user_id=user_id, type=ClothingType.shirt, tag_status=TagStatus.tagged
+    )
+
+    repo = MagicMock()
+    repo.get_by_id = AsyncMock(return_value=item)
+    repo.update = AsyncMock(side_effect=lambda i: i)
+    svc = _make_service(repo=repo)
+
+    await svc.update_tags(item_id, user_id, TagsUpdateRequest(type=None))
+
+    assert item.tag_status == TagStatus.untagged
 
 
 # --- delete_item ---

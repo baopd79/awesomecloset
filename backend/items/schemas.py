@@ -11,6 +11,7 @@ from backend.items.models import (
     ClothingStyle,
     ClothingType,
     ProcessingStatus,
+    TagStatus,
 )
 
 
@@ -28,6 +29,7 @@ class ItemResponse(BaseModel):
     thumbnail_url: str | None
     processing_status: ProcessingStatus
     processing_error: str | None
+    tag_status: TagStatus
     type: ClothingType | None
     colors: list[Any] | None
     style: list[ClothingStyle] | None

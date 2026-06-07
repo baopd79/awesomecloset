@@ -8,7 +8,7 @@ from PIL import Image
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from backend.core.database import transaction
-from backend.items.models import ProcessingStatus
+from backend.items.models import ProcessingStatus, TagStatus
 from backend.items.repository import ItemRepository
 
 BUCKET = "closet-images"
@@ -114,6 +114,7 @@ async def _run_pipeline(ctx: dict, session: AsyncSession, item_id: UUID) -> None
         item.style = tags.style
         item.season = tags.season
         item.occasion = tags.occasion
+        item.tag_status = TagStatus.tagged
         await repo.update_status(item, ProcessingStatus.ready)
 
     logger.info(f"process_item complete | item_id={item_id}")
