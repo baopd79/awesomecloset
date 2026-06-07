@@ -39,7 +39,7 @@
 
 **Deployment topology**:
 - **API Server** (Railway/Render service 1): FastAPI app — nhận HTTP request từ mobile
-- **ARQ Worker** (Railway/Render service 2): background jobs — rembg + Gemini tagging, cùng codebase với API
+- **ARQ Worker** (Railway/Render service 2): background jobs — `process_item` (rembg tách nền) + `tag_item` (Gemini gắn thẻ on-demand), cùng codebase với API
 - **Redis** (Railway/Render managed): job queue broker cho ARQ
 - **Supabase** (managed cloud): DB, Auth, Storage — không cần tự deploy
 - **Mobile app**: không deploy server — build bằng EAS, distribute qua App Store / Play Store
@@ -75,34 +75,40 @@ Chụp/Upload ảnh → Remove BG → AI Auto-tag → Digital Closet → AI Sugg
 - Cho phép retry từng item nếu xử lý ảnh hoặc AI tag thất bại
 
 #### 3.3 Remove Background
-- Tự động sau khi upload
-- Backend: `rembg` với model `u2net`
+- Tự động sau khi upload (job `process_item` trên ARQ worker)
+- Backend: `rembg` với model `u2netp` (biến thể nhẹ của u2net — vừa giới hạn RAM worker 1GB)
 - Fallback: Remove.bg API nếu xử lý thất bại hoặc user bấm "Improve cutout"
-- Output: PNG với transparent background, lưu vào Supabase Storage
+- Output: PNG transparent + thumbnail, lưu vào Supabase Storage
 - Resize/compress ảnh gốc trước khi upload để giảm storage và thời gian xử lý
+- **Pipeline upload kết thúc ở đây**: tách nền xong → `processing_status = ready` (món **dùng được** nhưng `tag_status = untagged`). Gắn thẻ là bước **on-demand** riêng (§3.4) — xem [[Amendments]] trong PLAN.md.
 
-#### 3.4 AI Auto-Tagging
-- Model: Gemini Flash multimodal, chọn bằng env config
-- Tags được sinh ra (giá trị khớp với DB enum):
+#### 3.4 AI Tagging (on-demand)
+- **Không auto** trong pipeline upload. Tagging chạy khi user kích (`POST /api/items/{id}/tag` → job `tag_item`) hoặc gắn thủ công (`PATCH .../tags`). Lý do: tách nền free/local không giới hạn, còn Gemini tốn phí + rate-limit → để user chủ động kiểm soát chi phí, đồng thời tránh vòng auto-retry đốt quota.
+- Chiều trạng thái riêng `tag_status`: `untagged → tagging → tagged | tag_failed`, độc lập với `processing_status`. Bất biến: **`tagged ⟺ item có `type``**.
+- Model: Gemini Flash multimodal, chọn bằng env config. Tags sinh ra (khớp DB enum):
   - `type`: `t_shirt`, `shirt`, `pants`, `jeans`, `shorts`, `dress`, `skirt`, `jacket`, `coat`, `hoodie`, `sweater`, `shoes`, `sneakers`, `boots`, `bag`, `accessory`
   - `color`: màu chủ đạo — `[{hex, name, dominant}]`
   - `style`: `casual`, `formal`, `streetwear`, `sporty`, `elegant`, `minimalist`
   - `season`: `spring_summer`, `fall_winter`, `all_season`
-  - `occasion`: `school`, `work`, `casual`, `party`, `date`, `travel`
-- User có thể edit tags sau khi AI tag
-- Structured JSON output từ Gemini (schema validation — output sai enum thì reject, không lưu)
+  - `occasion`: `school`, `work`, `party`, `date`, `travel` (+ `casual`)
+- Structured JSON từ Gemini (schema validation — sai enum thì reject, không lưu).
+- **Sửa thẻ thủ công** (`PATCH .../tags`): form chọn type/style/season/occasion + custom_tags. Có type → `tag_status = tagged`. `colors` là AI-only (không sửa tay).
+- **Gắn lại bằng AI** được trên mọi món (ghi đè type/colors/style/season/occasion, **giữ** custom_tags) — client xác nhận trước khi ghi đè.
+- Xử lý lỗi: first-tag fail → `tag_failed` (chưa có thẻ); re-tag fail → giữ `tagged` (thẻ cũ còn nguyên).
 
 #### 3.5 Digital Closet
 - Grid view 2-3 cột, ảnh đã remove-bg trên nền xám nhạt
 - Filter/sort theo: type, occasion, season (filter theo color → post-MVP)
 - Search bằng text (full-text search trên tags)
-- Item detail: ảnh full, tất cả tags, lịch sử mặc
+- Item detail: ảnh full, tất cả tags, lịch sử mặc; thao tác **Xoá** (soft-delete, có xác nhận), **Sửa thẻ**, **Để AI gắn thẻ** / **Gắn lại AI**
+- Card badge: **MỚI** (tạo ≤24h), **CHƯA MẶC**, **Chưa gắn thẻ** (món `ready` nhưng `untagged`)
 - Swipe to archive (không xóa, chỉ ẩn)
-- Empty states rõ ràng: chưa có đồ, đang xử lý, xử lý lỗi
+- Empty states rõ ràng: chưa có đồ, đang xử lý, xử lý lỗi, chưa gắn thẻ
+- Màn Add: hàng đợi xử lý tự thu gọn món `ready` sau ~3s + dải "Vừa thêm" (link sang tủ đồ) — đồ vừa thêm tìm lại được qua badge MỚI
 
 #### 3.6 AI Outfit Suggestion
 - Trigger: mỗi sáng (push notification) hoặc user bấm "Gợi ý hôm nay"
-- **Gate**: service kiểm tra số items `processing_status = ready` và `deleted_at IS NULL`. Nếu < 15 → throw `AppException(code="CLOSET_NOT_READY", status=403, items_count=N, items_required=15)`. Frontend dùng `items_count` để render progress bar.
+- **Gate**: service đếm số items **`tag_status = tagged`** (+ `processing_status = ready`, `deleted_at IS NULL`, `is_archived = false`). Nếu < 15 → throw `AppException(code="CLOSET_NOT_READY", status=403, items_count=N, items_required=15)`. Đếm `tagged` (không phải chỉ `ready`) vì gợi ý cần type/colors/style — món chưa gắn thẻ không vào pool. Frontend dùng `items_count` để render progress bar.
 - Input context gửi cho Gemini:
   - Danh sách đồ trong closet (ảnh thumbnail + tags)
   - Thời tiết hiện tại (OpenWeatherMap)
@@ -167,6 +173,7 @@ CREATE TYPE clothing_style AS ENUM (
 CREATE TYPE clothing_season AS ENUM ('spring_summer', 'fall_winter', 'all_season');
 CREATE TYPE clothing_occasion AS ENUM ('school', 'work', 'casual', 'party', 'date', 'travel');
 CREATE TYPE processing_status AS ENUM ('pending', 'removing_bg', 'tagging', 'ready', 'failed');
+CREATE TYPE tag_status AS ENUM ('untagged', 'tagging', 'tagged', 'tag_failed');  -- on-demand tagging, độc lập với processing_status (migration 008)
 CREATE TYPE feedback_action AS ENUM ('saved', 'worn', 'dismissed', 'disliked');
 CREATE TYPE outfit_item_role AS ENUM ('top', 'bottom', 'shoes', 'outerwear', 'bag', 'accessory');
 
@@ -186,8 +193,9 @@ clothing_items
   original_url       text            -- Supabase Storage path
   processed_url      text            -- after remove-bg
   thumbnail_url      text
-  processing_status  processing_status  DEFAULT 'pending'
+  processing_status  processing_status  DEFAULT 'pending'  -- pipeline tách nền: pending→removing_bg→ready|failed
   processing_error   text
+  tag_status         tag_status  DEFAULT 'untagged'  -- gắn thẻ on-demand: untagged→tagging→tagged|tag_failed; tagged ⟺ có type
   type               clothing_type
   colors             jsonb           -- [{hex, name, dominant}]
   style              clothing_style[]
@@ -272,11 +280,12 @@ daily_suggestion_cache
 POST   /api/items/upload          # Upload + queue processing
 GET    /api/items                 # List closet items (with filters)
 GET    /api/items/{id}            # Item detail + processing status
-PATCH  /api/items/{id}/tags       # Edit tags
+PATCH  /api/items/{id}/tags       # Sửa thẻ thủ công (có type → tag_status=tagged)
+POST   /api/items/{id}/tag        # Kích AI gắn thẻ on-demand (job tag_item) — yêu cầu ready, 100/day
 DELETE /api/items/{id}            # Soft delete (set deleted_at) — ẩn vĩnh viễn khỏi closet
 POST   /api/items/{id}/archive    # Archive (set is_archived=true) — ẩn tạm, vẫn trong closet
 POST   /api/items/{id}/unarchive  # Khôi phục (set is_archived=false) — màn Archive
-POST   /api/items/{id}/retry      # Retry failed processing
+POST   /api/items/{id}/retry      # Retry failed processing (bg pipeline)
 
 POST   /api/suggest/outfit        # Generate outfit suggestion (synchronous — xem §9)
 GET    /api/suggest/weather       # Get current weather for user location
@@ -299,7 +308,7 @@ GET    /api/analytics/history     # Wear history calendar (30d, 1 outfit/day)
 - Frontend poll `GET /api/items/{id}` hoặc subscribe Supabase Realtime để cập nhật `processing_status`.
 - `DELETE /api/items/{id}` là soft delete (set `deleted_at`, ẩn vĩnh viễn); `POST /api/items/{id}/archive` chỉ set `is_archived` (ẩn tạm khỏi closet, vẫn còn data). Hard delete chỉ dùng cho account deletion.
 - `POST /api/suggest/outfit` chạy **synchronous** trong request (xem §9): gate → cache lookup → Gemini → tạo outfits → trả về ngay. Cache theo `(user_id, suggestion_date, context_hash)` — cùng ngày nhưng khác occasion/weather/closet sẽ tạo cache entry mới, không bị kẹt cache cũ. Collage cho từng outfit generate **tuần tự** (không `asyncio.gather`) vì `AsyncSession` không an toàn concurrent — DB write của các collage sẽ interleave; nếu latency thực tế kém thì tách collage sang ARQ ở follow-up.
-  - **Gate count** = `processing_status = ready AND deleted_at IS NULL AND is_archived = false` — chỉ đếm item thực sự dùng được, tránh edge "đủ 15 nhưng toàn archived".
+  - **Gate count** = `tag_status = tagged AND processing_status = ready AND deleted_at IS NULL AND is_archived = false` — chỉ đếm item **đã gắn thẻ** (gợi ý cần tags), tránh edge "đủ 15 nhưng toàn archived / chưa gắn thẻ".
   - **Cache lưu ở Postgres (`daily_suggestion_cache`), không Redis**: cache chỉ là *con trỏ* tới `outfit_ids` đã persist ở bảng `outfits` (collage + reasoning đã nằm sẵn ở DB) → để chung Postgres giữ một nguồn sự thật, ghi trong cùng transaction với outfit, và survive restart. Redis để dành cho rate limit (ephemeral counter). Cache hit vẫn re-fetch outfit để **ký signed URL mới** (URL hết hạn).
   - **Self-healing**: nếu cache trỏ tới outfit đã bị xóa (`get_outfit` raise) → coi như miss → regenerate thay vì trả lỗi.
   - **Rate limit `10/user/ngày`** đếm *mọi* request tới endpoint — bao gồm cả cache-hit và cả request bị 403 gate, không chỉ riêng lần thật sự gọi Gemini. Key theo `user_id` (fallback IP). Storage in-memory cho single instance MVP → chuyển Redis-backed khi scale ngang (Task 19).
@@ -456,7 +465,7 @@ Chi tiết conventions, patterns, và rules: xem [`docs/backend-conventions.md`]
 - Thay đổi pricing / monetization logic
 
 ### Never do
-- Gọi AI API synchronously cho **batch image processing** (rembg + tagging) — phải chạy trên ARQ worker, không block UI. *Ngoại lệ có chủ đích*: `POST /api/suggest/outfit` chạy sync trong request vì là on-demand (user chờ kết quả ngay), được bảo vệ bằng cache + rate limit + timeout.
+- Gọi AI API synchronously cho **image processing** (rembg, Gemini tagging) — phải chạy trên ARQ worker (`process_item`, `tag_item`), không block UI. Tagging là job **on-demand** (kích bằng `POST /items/{id}/tag`), không tự chạy trong pipeline upload. *Ngoại lệ có chủ đích*: `POST /api/suggest/outfit` chạy sync trong request vì là on-demand (user chờ kết quả ngay), được bảo vệ bằng cache + rate limit + timeout.
 - Lưu ảnh gốc không compressed (resize trước khi upload)
 - Collect location liên tục — chỉ lấy khi user request suggestion
 - Hard-code API keys trong code

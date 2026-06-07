@@ -4,7 +4,7 @@
 
 Build một AI personal closet app mobile-first cho người dùng Việt Nam. Core loop: chụp ảnh đồ → AI remove-bg + tag → digital closet → AI suggest outfit theo thời tiết + hoàn cảnh mỗi sáng. Stack: React Native (Expo) + FastAPI + Supabase + Gemini Flash + ARQ/Redis.
 
-## Progress (cập nhật 2026-06-04)
+## Progress (cập nhật 2026-06-07)
 
 | Task | Mô tả | Trạng thái |
 |---|---|---|
@@ -27,10 +27,16 @@ Build một AI personal closet app mobile-first cho người dùng Việt Nam. C
 | 16 | Analytics (server-side + UI) | ✅ #26 |
 | 17 | Gamification + Onboarding | ✅ #27 |
 | 22 | Profile + Archive (Extras) | ✅ #28 |
-| 23 | Outfit Save + Manual Builder | 🔨 feat/23-outfit-save-builder |
+| 23 | Outfit Save + Manual Builder | ✅ #25 |
 | 18–21 | Push, deploy, EAS | ⏳ |
 
-Backend Phase 1 + 2 gần khép — **Task 14 (suggest)** đã implement trên `feat/14-suggest` (chờ merge), khép Phase 2 core AI loop; mobile còn **Task 15**.
+**Post-MVP / hardening (sau bảng task gốc)** — xem [Amendments](#amendments-post-mvp) cuối file:
+- CI: ci-backend + ci-mobile (#29).
+- Worker stability: OOM (u2netp + tắt onnx arena), Gemini 429, job dedup/keep_result, cron orphan recovery (#32–37).
+- Mobile lifecycle: queue auto-collapse + delete item + retry-stuck + badge MỚI (#38); UI sửa thẻ `PATCH` (#39).
+- **Split-flow gắn thẻ on-demand** (#40–43): `tag_status`; gate/suggest đếm `tagged`; tách `process_item` (bg) + `tag_item` (Gemini on-demand) + `POST /items/{id}/tag`; mobile UI on-demand.
+
+> ⚠️ Các thay đổi post-MVP làm một số tiêu chí Task 5/7/8 bên dưới **không còn đúng** (pipeline upload giờ dừng ở `ready`, không auto-tag). Tiêu chí gốc giữ làm bản ghi lịch sử; hành vi hiện tại ở mục Amendments.
 
 ## Git Workflow
 
@@ -267,6 +273,8 @@ Git repo + CI (GitHub Actions)
 
 ### Task 5: rembg Pipeline trên ARQ Worker
 
+> ⚠️ **Đã đổi (post-MVP):** dùng `u2netp` (không phải `u2net`) vì RAM; `process_item` giờ **dừng ở `ready`** sau tách nền — **không** còn nối bước tagging. Xem [Amendments](#amendments-post-mvp).
+
 **Description:** ARQ worker nhận job `process_item`, chạy rembg `u2net` để remove background, lưu PNG transparent vào Storage, update `processing_status`. Fallback sang Remove.bg API nếu rembg fail. Mọi bước update `processing_status` để frontend track được.
 
 **Acceptance criteria:**
@@ -328,6 +336,8 @@ Git repo + CI (GitHub Actions)
 
 ### Task 7: Mobile — Upload Flow
 
+> ⚠️ **Đã đổi (post-MVP):** progress bỏ bước `tagging` (`uploading → removing_bg → ready`); thêm queue auto-collapse + dải "Vừa thêm" + delete/dismiss card (#38). Gắn thẻ chuyển sang on-demand ở item detail. Xem [Amendments](#amendments-post-mvp).
+
 **Description:** Màn hình Add cho phép chụp ảnh qua camera in-app hoặc batch pick từ gallery. Ảnh được upload lên API, hiển thị progress indicator per item, và retry UI nếu fail. Subscribe Supabase Realtime để update processing status real-time.
 
 **Acceptance criteria:**
@@ -370,6 +380,8 @@ Git repo + CI (GitHub Actions)
 ---
 
 ### Task 8: Gemini Vision Tagging
+
+> ⚠️ **Đã đổi (post-MVP):** tagging **không** còn nối sau rembg. Giờ là job riêng `tag_item`, **on-demand** (kích `POST /items/{id}/tag`), ghi vào chiều `tag_status`; lỗi không làm hỏng món (vẫn `ready`). Xem [Amendments](#amendments-post-mvp).
 
 **Description:** ARQ worker tiếp tục pipeline sau rembg: gửi `processed_url` (thumbnail) vào Gemini Vision để tag. Prompt truyền đầy đủ taxonomy enum values. Output JSON được validate — sai enum thì reject và log, không lưu partial data.
 
@@ -919,3 +931,34 @@ Màn Appearance screen yêu cầu runtime theme switching. Hiện tại `T = bui
 - `streak_count` update logic: cron job hàng ngày reset streak nếu user không xem suggestion, hay chỉ update khi user mở app?
 - Collage layout: flat-lay style hay grid? Cần design mockup trước Task 11.
 - Signed URL TTL: 1 giờ đủ chưa hay cần refresh mechanism ở mobile?
+
+---
+
+## Amendments (post-MVP)
+
+Các thay đổi sau khi khép task plan gốc. Tiêu chí task ở trên giữ làm bản ghi lịch sử; mục này là **hành vi hiện tại**.
+
+### A1. Worker stability (#32–37)
+- **OOM** (worker 1GB): `max_jobs=1` → downscale input → model `u2netp` → tắt `enable_cpu_mem_arena` + `intra_op_num_threads=1`. RAM phẳng.
+- **Gemini 429**: bắt `ResourceExhausted` → `Retry(defer)` còn lượt, hết lượt → terminal (chặn vòng đốt quota).
+- **Job dedup**: deterministic job_id `process_item:{id}` + `keep_result=0` (result key 1h chặn retry/recovery nếu để mặc định).
+- **Orphan recovery**: `cron(_recover_orphaned)` mỗi 5' (không chỉ on_startup). Sau split-flow chỉ quét `pending`/`removing_bg`.
+- Chi tiết: `docs/lessons-learned.md` mục Workers/ARQ.
+
+### A2. Mobile item lifecycle (#38–39)
+- Màn Add: card `ready` auto-collapse ~3s; nút `x` (ẩn, có xác nhận khi đang xử lý); nút Xoá cho card failed; dải "Vừa thêm" + "Xem trong tủ".
+- Tủ đồ: badge **MỚI** (≤24h). Item detail: nút **Xoá** (soft-delete, xác nhận) + **retry cho item kẹt** (không chỉ failed).
+- Sửa thẻ thủ công: sheet `EditTagsSheet` → `PATCH /items/{id}/tags` (type/style/season/occasion + custom_tags).
+- `DELETE` là **soft-delete** (`deleted_at`), không undelete, không dọn storage (nợ V2). Audit: outfits/wear/suggest/analytics đều lọc `deleted_at` + xử lý `None` mượt.
+
+### A3. Split-flow gắn thẻ on-demand (#40–43)
+Tách tagging khỏi pipeline upload. Đồ upload xong ở `ready` nhưng **chưa gắn thẻ**; user gắn theo lệnh (AI hoặc tay).
+- **Status 2 chiều**: `processing_status` (pending→removing_bg→ready|failed, bỏ bước tagging) ⊥ `tag_status` (untagged→tagging→tagged|tag_failed). Bất biến `tagged ⟺ có type`. Migration `008_tag_status.sql`.
+- **Worker**: `process_item` chỉ bg→ready; job mới `tag_item` (Gemini, on-demand).
+- **API**: `POST /items/{id}/tag` (kích AI, yêu cầu `ready`, 100/day); `PATCH .../tags` set `tagged` khi có type. Re-tag ghi đè field-AI, giữ custom_tags. Lỗi: first-tag→`tag_failed`, re-tag→giữ `tagged`.
+- **Gate/suggest** đếm `tag_status=tagged` (không phải chỉ `ready`). Analytics giữ `ready`.
+- **Mobile**: item detail rẽ theo `tag_status` (nút "Để AI gắn thẻ"/"Gắn lại AI"/"Gắn thủ công"); ItemCard chip "Chưa gắn thẻ"; realtime theo dõi `tag_status`.
+- Lý do: tách nền free/local không giới hạn, Gemini tốn phí + rate-limit → on-demand kiểm soát chi phí + tự diệt vòng auto-retry đốt quota.
+
+### Còn nợ
+Thùng rác/Hoàn tác item (cần restore endpoint) · auto dọn storage cho item `deleted_at` cũ · `tagged_by` provenance · Task 18–21 (push, deploy/CD, EAS) · Gemini billing.
