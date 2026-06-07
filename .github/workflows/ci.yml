@@ -29,6 +29,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+          python-version: "3.12"   # khớp prod (Railway 3.12) — không để uv tự lấy 3.13
           enable-cache: true
 
       - name: Install dependencies
