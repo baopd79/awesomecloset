@@ -66,8 +66,8 @@ class SuggestService:
         self._weather = weather_client
 
     async def suggest_outfit(self, user_id: UUID, data: SuggestRequest) -> SuggestResponse:
-        # 1. Gate — need enough usable items before suggestions unlock.
-        count = await self._item_repo.count_active_ready(user_id)
+        # 1. Gate — need enough tagged items before suggestions unlock (suggestions need tags).
+        count = await self._item_repo.count_active_tagged(user_id)
         if count < ITEMS_REQUIRED:
             raise AppException(
                 code="CLOSET_NOT_READY",
@@ -81,7 +81,7 @@ class SuggestService:
         weather_dict = weather.model_dump() if weather else None
 
         # 3. Build closet context + cache key.
-        closet = await self._item_repo.list_active_ready(user_id)
+        closet = await self._item_repo.list_active_tagged(user_id)
         occasion_val = data.occasion.value if data.occasion else None
         weather_cond = weather.condition if weather else None
         context_hash = _context_hash([i.id for i in closet], weather_cond, occasion_val)

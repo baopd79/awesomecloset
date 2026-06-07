@@ -10,7 +10,7 @@ from sqlmodel import select
 
 from backend.core.database import transaction
 from backend.core.exceptions import AppException
-from backend.items.models import ClothingItem, ClothingType, ProcessingStatus
+from backend.items.models import ClothingItem, ClothingType, ProcessingStatus, TagStatus
 from backend.items.repository import ItemRepository
 from backend.outfits.repository import OutfitRepository
 from backend.outfits.service import OutfitService
@@ -44,6 +44,7 @@ async def _seed_ready_items(session, uid: uuid.UUID, n: int) -> list[ClothingIte
             item = ClothingItem(
                 user_id=uid,
                 processing_status=ProcessingStatus.ready,
+                tag_status=TagStatus.tagged,
                 type=ClothingType.t_shirt,
                 thumbnail_url=f"{uid}/{uuid.uuid4()}/thumbnail.jpg",
                 processed_url=f"{uid}/{uuid.uuid4()}/processed.png",
