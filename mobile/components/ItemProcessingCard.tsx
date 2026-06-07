@@ -7,12 +7,12 @@ import { T } from '@/lib/theme';
 
 export type LocalStatus = 'uploading' | ProcessingStatus;
 
+// Upload only runs through background removal now — tagging is a separate on-demand step.
 const STEPS: { key: LocalStatus; label: string; progress: number }[] = [
-  { key: 'uploading',   label: 'Đang tải lên',    progress: 0.15 },
-  { key: 'pending',     label: 'Chờ xử lý',       progress: 0.25 },
-  { key: 'removing_bg', label: 'Đang tách nền',   progress: 0.50 },
-  { key: 'tagging',     label: 'AI đang gắn thẻ', progress: 0.80 },
-  { key: 'ready',       label: 'Hoàn tất',         progress: 1.00 },
+  { key: 'uploading',   label: 'Đang tải lên',  progress: 0.2 },
+  { key: 'pending',     label: 'Chờ xử lý',     progress: 0.35 },
+  { key: 'removing_bg', label: 'Đang tách nền', progress: 0.7 },
+  { key: 'ready',       label: 'Hoàn tất',       progress: 1.0 },
 ];
 
 interface Props {
@@ -42,10 +42,10 @@ export function ItemProcessingCard({
     if (itemId) setStatus(initialStatus);
   }, [itemId]);
 
-  const handleUpdate = useCallback((s: ProcessingStatus, error: string | null) => {
-    void error;
-    setStatus(s);
-  }, []);
+  const handleUpdate = useCallback(
+    (rec: { processing_status: ProcessingStatus }) => setStatus(rec.processing_status),
+    [],
+  );
 
   useRealtimeItem(itemId, handleUpdate);
 

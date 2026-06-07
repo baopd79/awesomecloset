@@ -14,8 +14,17 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { EditTagsSheet } from '@/components/EditTagsSheet';
 import { Icon } from '@/components/ui/Icon';
 import { Kicker } from '@/components/ui/Kicker';
+import { PrimaryBtn } from '@/components/ui/PrimaryBtn';
 import { useToast } from '@/components/ui/Toast';
-import { archiveItem, deleteItem, getItem, retryItem, type ItemResponse } from '@/lib/api';
+import { useRealtimeItem } from '@/hooks/useRealtimeItem';
+import {
+  archiveItem,
+  deleteItem,
+  getItem,
+  requestTagging,
+  retryItem,
+  type ItemResponse,
+} from '@/lib/api';
 import {
   OCCASION_LABEL,
   SEASON_LABEL,
@@ -34,6 +43,7 @@ export default function ItemScreen() {
   const [archiving, setArchiving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [tagging, setTagging] = useState(false);
   const toast = useToast();
 
   const load = useCallback(async () => {
@@ -47,7 +57,41 @@ export default function ItemScreen() {
     }
   }, [id]);
 
+  // Silent refresh (no full-screen spinner) — used when realtime reports a state change.
+  const refresh = useCallback(async () => {
+    if (!id) return;
+    try {
+      setItem(await getItem(id));
+    } catch {
+      // keep the current view; a later refresh or focus will reconcile
+    }
+  }, [id]);
+
   useEffect(() => { void load(); }, [load]);
+
+  // Re-fetch when the server pushes a processing/tag_status change (e.g. AI tagging finished).
+  useRealtimeItem(id ?? null, useCallback(() => { void refresh(); }, [refresh]));
+
+  async function handleRequestTagging() {
+    if (!item || tagging) return;
+    setTagging(true);
+    try {
+      const updated = await requestTagging(item.id);
+      setItem(updated); // tag_status -> tagging; realtime delivers the result
+    } catch {
+      toast.show('Không gắn thẻ được, thử lại nhé');
+    } finally {
+      setTagging(false);
+    }
+  }
+
+  function handleRetag() {
+    if (!item || tagging) return;
+    Alert.alert('Gắn lại bằng AI?', 'AI sẽ gắn thẻ mới, ghi đè thẻ hiện tại (thẻ tự do giữ nguyên).', [
+      { text: 'Huỷ', style: 'cancel' },
+      { text: 'Gắn lại', onPress: () => void handleRequestTagging() },
+    ]);
+  }
 
   async function handleArchive() {
     if (!item || archiving) return;
@@ -226,40 +270,85 @@ export default function ItemScreen() {
 
           {isReady && (
             <>
-              {/* colors */}
-              {Array.isArray(item.colors) && item.colors.length > 0 && (
+              {/* tagging — branches on tag_status */}
+              {item.tag_status === 'tagged' ? (
                 <>
-                  <Text style={styles.sectionTitle}>Màu sắc</Text>
+                  {/* colors */}
+                  {Array.isArray(item.colors) && item.colors.length > 0 && (
+                    <>
+                      <Text style={styles.sectionTitle}>Màu sắc</Text>
+                      <View style={styles.tagRow}>
+                        {(
+                          item.colors as Array<{ hex: string; name: string; dominant?: boolean }>
+                        ).map((c, i) => (
+                          <View key={i} style={styles.tagChip}>
+                            <View style={[styles.swatch, { backgroundColor: c.hex }]} />
+                            <Text style={styles.tagText}>
+                              {c.name}{c.dominant ? ' · chủ đạo' : ''}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </>
+                  )}
+
+                  {/* tags */}
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionTitleInline}>Thẻ gắn</Text>
+                    <View style={styles.headerActions}>
+                      <Pressable onPress={() => setEditOpen(true)} hitSlop={8} style={styles.editBtn}>
+                        <Icon name="edit" size={15} color={T.accent} />
+                        <Text style={styles.editText}>Sửa</Text>
+                      </Pressable>
+                      <Pressable onPress={handleRetag} hitSlop={8} style={styles.editBtn}>
+                        <Icon name="spark" size={15} color={T.accent} />
+                        <Text style={styles.editText}>Gắn lại AI</Text>
+                      </Pressable>
+                    </View>
+                  </View>
                   <View style={styles.tagRow}>
-                    {(item.colors as Array<{ hex: string; name: string; dominant?: boolean }>).map(
-                      (c, i) => (
-                        <View key={i} style={styles.tagChip}>
-                          <View style={[styles.swatch, { backgroundColor: c.hex }]} />
-                          <Text style={styles.tagText}>
-                            {c.name}{c.dominant ? ' · chủ đạo' : ''}
-                          </Text>
-                        </View>
-                      ),
-                    )}
+                    {typeLabel && <TagChip>{typeLabel}</TagChip>}
+                    {occasions.map((o) => <TagChip key={o}>{o}</TagChip>)}
+                    {seasonLabel && <TagChip>{seasonLabel}</TagChip>}
+                    {styles2.map((s) => <TagChip key={s}>{s}</TagChip>)}
+                    {(item.custom_tags ?? []).map((t) => <TagChip key={t}>{t}</TagChip>)}
                   </View>
                 </>
+              ) : item.tag_status === 'tagging' ? (
+                <View style={[styles.processingRow, { marginTop: 24 }]}>
+                  <ActivityIndicator size="small" color={T.accent} />
+                  <Text style={styles.processingText}>AI đang gắn thẻ…</Text>
+                </View>
+              ) : (
+                <View style={styles.tagPrompt}>
+                  <View style={styles.tagPromptIcon}>
+                    <Icon name="spark" size={20} color={T.accent} />
+                  </View>
+                  <Text style={styles.tagPromptTitle}>
+                    {item.tag_status === 'tag_failed' ? 'Gắn thẻ chưa xong' : 'Chưa gắn thẻ'}
+                  </Text>
+                  <Text style={styles.tagPromptSub}>
+                    {item.tag_status === 'tag_failed'
+                      ? 'AI gắn thẻ chưa được — thử lại hoặc gắn thủ công.'
+                      : 'Để AI gắn thẻ tự động, hoặc tự gắn để dùng trong gợi ý.'}
+                  </Text>
+                  <PrimaryBtn
+                    icon="spark"
+                    style={styles.tagAiBtn}
+                    onPress={handleRequestTagging}
+                    disabled={tagging}
+                  >
+                    {tagging
+                      ? 'Đang gửi…'
+                      : item.tag_status === 'tag_failed'
+                      ? 'Thử lại bằng AI'
+                      : 'Để AI gắn thẻ'}
+                  </PrimaryBtn>
+                  <Pressable onPress={() => setEditOpen(true)} style={styles.tagManualBtn}>
+                    <Text style={styles.tagManualText}>Gắn thủ công</Text>
+                  </Pressable>
+                </View>
               )}
-
-              {/* AI tags */}
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitleInline}>Thẻ gắn (AI)</Text>
-                <Pressable onPress={() => setEditOpen(true)} hitSlop={8} style={styles.editBtn}>
-                  <Icon name="edit" size={15} color={T.accent} />
-                  <Text style={styles.editText}>Sửa</Text>
-                </Pressable>
-              </View>
-              <View style={styles.tagRow}>
-                {typeLabel && <TagChip>{typeLabel}</TagChip>}
-                {occasions.map((o) => <TagChip key={o}>{o}</TagChip>)}
-                {seasonLabel && <TagChip>{seasonLabel}</TagChip>}
-                {styles2.map((s) => <TagChip key={s}>{s}</TagChip>)}
-                {(item.custom_tags ?? []).map((t) => <TagChip key={t}>{t}</TagChip>)}
-              </View>
 
               {/* wear history */}
               <Text style={styles.sectionTitle}>Lịch sử mặc</Text>
@@ -421,6 +510,50 @@ const styles = StyleSheet.create({
     fontFamily: 'BeVietnamPro_600SemiBold',
     fontSize: 13,
     color: T.accent,
+  },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  tagPrompt: {
+    marginTop: 24,
+    backgroundColor: T.surface,
+    borderRadius: T.rsm,
+    padding: 20,
+    alignItems: 'center',
+    ...T.shadow,
+  },
+  tagPromptIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: T.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  tagPromptTitle: {
+    fontFamily: 'PlayfairDisplay_700Bold',
+    fontSize: 18,
+    color: T.ink,
+  },
+  tagPromptSub: {
+    fontFamily: 'BeVietnamPro_400Regular',
+    fontSize: 13,
+    lineHeight: 19,
+    color: T.sub,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  tagAiBtn: { width: '100%' },
+  tagManualBtn: {
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  tagManualText: {
+    fontFamily: 'BeVietnamPro_600SemiBold',
+    fontSize: 14,
+    color: T.sub,
   },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tagChip: {
