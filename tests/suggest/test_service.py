@@ -72,7 +72,7 @@ def _make_service():
 @pytest.mark.asyncio
 async def test_gate_blocks_under_15_items():
     svc, _, item_repo, _, client, _ = _make_service()
-    item_repo.count_active_ready = AsyncMock(return_value=14)
+    item_repo.count_active_tagged = AsyncMock(return_value=14)
 
     with pytest.raises(AppException) as exc:
         await svc.suggest_outfit(USER_ID, SuggestRequest())
@@ -88,8 +88,8 @@ async def test_gate_blocks_under_15_items():
 async def test_cache_miss_calls_gemini_and_creates_outfits():
     closet = [_closet_item() for _ in range(15)]
     svc, suggest_repo, item_repo, outfit_service, client, _ = _make_service()
-    item_repo.count_active_ready = AsyncMock(return_value=15)
-    item_repo.list_active_ready = AsyncMock(return_value=closet)
+    item_repo.count_active_tagged = AsyncMock(return_value=15)
+    item_repo.list_active_tagged = AsyncMock(return_value=closet)
     client.suggest = AsyncMock(
         return_value=SuggestionResult(
             outfits=[
@@ -112,8 +112,8 @@ async def test_cache_miss_calls_gemini_and_creates_outfits():
 async def test_cache_hit_skips_gemini():
     closet = [_closet_item() for _ in range(15)]
     svc, suggest_repo, item_repo, outfit_service, client, _ = _make_service()
-    item_repo.count_active_ready = AsyncMock(return_value=15)
-    item_repo.list_active_ready = AsyncMock(return_value=closet)
+    item_repo.count_active_tagged = AsyncMock(return_value=15)
+    item_repo.list_active_tagged = AsyncMock(return_value=closet)
 
     cached_ids = [uuid.uuid4(), uuid.uuid4()]
     suggest_repo.get_cache = AsyncMock(
@@ -138,8 +138,8 @@ async def test_cache_hit_skips_gemini():
 async def test_cache_hit_with_deleted_outfit_regenerates():
     closet = [_closet_item() for _ in range(15)]
     svc, suggest_repo, item_repo, outfit_service, client, _ = _make_service()
-    item_repo.count_active_ready = AsyncMock(return_value=15)
-    item_repo.list_active_ready = AsyncMock(return_value=closet)
+    item_repo.count_active_tagged = AsyncMock(return_value=15)
+    item_repo.list_active_tagged = AsyncMock(return_value=closet)
     suggest_repo.get_cache = AsyncMock(
         return_value=DailySuggestionCache(
             user_id=USER_ID,
@@ -168,8 +168,8 @@ async def test_cache_hit_with_deleted_outfit_regenerates():
 async def test_invalid_item_ids_dropped_then_all_empty_fails():
     closet = [_closet_item() for _ in range(15)]
     svc, _, item_repo, outfit_service, client, _ = _make_service()
-    item_repo.count_active_ready = AsyncMock(return_value=15)
-    item_repo.list_active_ready = AsyncMock(return_value=closet)
+    item_repo.count_active_tagged = AsyncMock(return_value=15)
+    item_repo.list_active_tagged = AsyncMock(return_value=closet)
     # Gemini hallucinates ids not in the closet → outfit dropped → no outfits → 502
     client.suggest = AsyncMock(
         return_value=SuggestionResult(
@@ -188,8 +188,8 @@ async def test_invalid_item_ids_dropped_then_all_empty_fails():
 async def test_partial_invalid_ids_kept():
     closet = [_closet_item() for _ in range(15)]
     svc, _, item_repo, outfit_service, client, _ = _make_service()
-    item_repo.count_active_ready = AsyncMock(return_value=15)
-    item_repo.list_active_ready = AsyncMock(return_value=closet)
+    item_repo.count_active_tagged = AsyncMock(return_value=15)
+    item_repo.list_active_tagged = AsyncMock(return_value=closet)
     # one real id + one hallucinated → outfit kept with the valid id only
     client.suggest = AsyncMock(
         return_value=SuggestionResult(

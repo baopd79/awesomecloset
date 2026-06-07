@@ -78,6 +78,29 @@ async def test_tag_status_round_trips(repo, db_session, test_user_id):
 
 
 @pytest.mark.asyncio
+async def test_active_tagged_excludes_untagged_ready(repo, db_session, test_user_id):
+    # A ready-but-untagged item is a real closet item but must NOT count toward suggestions.
+    tagged = ClothingItem(
+        user_id=test_user_id,
+        processing_status=ProcessingStatus.ready,
+        type=ClothingType.shirt,
+        tag_status=TagStatus.tagged,
+    )
+    untagged = ClothingItem(
+        user_id=test_user_id,
+        processing_status=ProcessingStatus.ready,
+        tag_status=TagStatus.untagged,
+    )
+    async with transaction(db_session):
+        await repo.create(tagged)
+        await repo.create(untagged)
+
+    assert await repo.count_active_tagged(test_user_id) == 1
+    listed = await repo.list_active_tagged(test_user_id)
+    assert [i.tag_status for i in listed] == [TagStatus.tagged]
+
+
+@pytest.mark.asyncio
 async def test_get_item_wrong_user_returns_none(repo, db_session, test_user_id):
     item = ClothingItem(user_id=test_user_id, processing_status=ProcessingStatus.ready)
     async with transaction(db_session):

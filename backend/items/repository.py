@@ -14,6 +14,7 @@ from backend.items.models import (
     ClothingSeason,
     ClothingType,
     ProcessingStatus,
+    TagStatus,
     _utcnow,
 )
 from backend.items.schemas import SortBy
@@ -143,26 +144,30 @@ class ItemRepository:
 
         return rows, next_cursor
 
-    def _active_ready_where(self, user_id: UUID) -> list[Any]:
-        # Items eligible for outfit suggestion: ready, not deleted, not archived.
+    def _active_tagged_where(self, user_id: UUID) -> list[Any]:
+        # Items eligible for outfit suggestion + the closet gate: ready (usable image) AND
+        # tagged (has a type — suggestions need it), not deleted, not archived.
         return [
             ClothingItem.user_id == user_id,
             ClothingItem.deleted_at.is_(None),
             ClothingItem.is_archived.is_(False),
             ClothingItem.processing_status == ProcessingStatus.ready,
+            ClothingItem.tag_status == TagStatus.tagged,
         ]
 
-    async def count_active_ready(self, user_id: UUID) -> int:
+    async def count_active_tagged(self, user_id: UUID) -> int:
         stmt = (
-            select(func.count()).select_from(ClothingItem).where(*self._active_ready_where(user_id))
+            select(func.count())
+            .select_from(ClothingItem)
+            .where(*self._active_tagged_where(user_id))
         )
         result = await self._session.exec(stmt)
         return result.one()
 
-    async def list_active_ready(self, user_id: UUID, limit: int = 200) -> list[ClothingItem]:
+    async def list_active_tagged(self, user_id: UUID, limit: int = 200) -> list[ClothingItem]:
         stmt = (
             select(ClothingItem)
-            .where(*self._active_ready_where(user_id))
+            .where(*self._active_tagged_where(user_id))
             .order_by(ClothingItem.created_at.desc())
             .limit(limit)
         )
