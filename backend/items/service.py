@@ -182,10 +182,44 @@ class ItemService:
         await self._sign_items([item])
         return item
 
+    async def request_ai_tagging(self, item_id: UUID, user_id: UUID) -> ClothingItem:
+        """Kick off on-demand AI tagging. The item must be `ready` (it needs a processed
+        thumbnail for Gemini). Re-tagging an already-tagged item is allowed (overwrites the
+        AI-derived tags, never custom_tags) — the confirm prompt lives on the client."""
+        item = await self._get_or_raise(item_id, user_id)
+        if item.processing_status != ProcessingStatus.ready:
+            raise AppException(
+                code="ITEM_NOT_READY",
+                status=409,
+                item_id=str(item_id),
+                current_status=item.processing_status,
+            )
+        # Already running — return as-is rather than re-enqueue (the job id dedups anyway).
+        if item.tag_status == TagStatus.tagging:
+            await self._sign_items([item])
+            return item
+
+        async with transaction(self._session):
+            await self._repo.update_tag_status(item, TagStatus.tagging)
+        try:
+            await self._arq.enqueue_job("tag_item", str(item_id), _job_id=_tag_job_id(item_id))
+        except Exception:
+            # Revert so the item is not stuck "tagging" with no job behind it.
+            async with transaction(self._session):
+                revert = TagStatus.tagged if item.type is not None else TagStatus.untagged
+                await self._repo.update_tag_status(item, revert)
+            raise
+        await self._sign_items([item])
+        return item
+
 
 def _job_id(item_id: UUID) -> str:
     # Deterministic job ID — ARQ deduplicates if same ID is already queued/in-progress.
     return f"process_item:{item_id}"
+
+
+def _tag_job_id(item_id: UUID) -> str:
+    return f"tag_item:{item_id}"
 
 
 def _compress_image(content: bytes) -> bytes:

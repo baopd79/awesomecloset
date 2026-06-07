@@ -12,7 +12,7 @@ from backend.items.repository import ItemRepository
 from backend.items.service import _job_id
 from backend.workers.ai_pipeline import GeminiFlashClient
 from backend.workers.bg_removal import RembgClient, RemoveBgApiClient
-from backend.workers.tasks import process_item
+from backend.workers.tasks import process_item, tag_item
 
 # Lightweight u2net variant — small resident footprint to fit the worker's memory limit.
 _REMBG_MODEL = "u2netp"
@@ -124,7 +124,7 @@ async def shutdown(ctx: dict) -> None:
 class WorkerSettings:
     """ARQ worker configuration. Run with: uv run arq backend.workers.main.WorkerSettings"""
 
-    functions = [process_item]
+    functions = [process_item, tag_item]
     on_startup = startup
     on_shutdown = shutdown
     # Sweep for orphaned items every 5 minutes (startup already runs one sweep, so skip

@@ -125,3 +125,15 @@ async def retry_item(
 ) -> ItemResponse:
     item = await svc.retry_processing(item_id, UUID(user_id))
     return ItemResponse.model_validate(item)
+
+
+@router.post("/{item_id}/tag", status_code=status.HTTP_202_ACCEPTED, response_model=ItemResponse)
+@limiter.limit("100/day")
+async def tag_item(
+    request: Request,
+    item_id: UUID,
+    user_id: CurrentUserDep,
+    svc: ServiceDep,
+) -> ItemResponse:
+    item = await svc.request_ai_tagging(item_id, UUID(user_id))
+    return ItemResponse.model_validate(item)
